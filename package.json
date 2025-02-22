@@ -1,30 +1,26 @@
 {
-  "name": "chrono-ai",
+  "name": "mvp-unified-workspace",
   "version": "1.0.0",
   "private": true,
   "scripts": {
     "dev": "next dev",
-    "build": "next build && prisma generate",
-    "start": "next start",
-    "lint": "next lint",
-    "prisma:generate": "prisma generate",
-    "prisma:migrate:dev": "prisma migrate dev",
-    "prisma:studio": "prisma studio"
+    "build": "next build && prisma generate",  // <--- This line is changed
+    "start": "next start"
   },
   "dependencies": {
     "@emotion/react": "^11.11.0",
     "@emotion/styled": "^11.11.0",
     "@mui/material": "^5.13.0",
-    "@next-auth/prisma-adapter": "^1.0.7",
-    "@prisma/client": "^5.1.1",  
     "axios": "^1.3.0",
     "date-fns": "^2.30.0",
     "next": "13.4.0",
     "next-auth": "^4.22.0",
     "react": "18.2.0",
-    "react-dom": "18.2.0"
+    "react-dom": "18.2.0",
+    "@prisma/client": "^5.1.1",        // <--- Add this line. Use your project's actual Prisma version.
+    "@next-auth/prisma-adapter": "^1.0.7" // <-- Add this line. Use the correct version.
   },
   "devDependencies": {
-    "prisma": "^5.1.1"
+    "prisma": "^5.1.1"             // <--- Add this line. Use your project's actual Prisma version.
   }
 }
