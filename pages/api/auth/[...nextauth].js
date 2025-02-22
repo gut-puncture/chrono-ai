@@ -2,7 +2,7 @@
 import NextAuth from "next-auth";
 import GoogleProvider from "next-auth/providers/google";
 import { PrismaAdapter } from "@next-auth/prisma-adapter";
-import prisma from "../../../lib/prisma"; // Correct path to your prisma client
+import prisma from "../../../lib/prisma"; // Corrected path
 
 export default NextAuth({
   adapter: PrismaAdapter(prisma),
@@ -18,28 +18,19 @@ export default NextAuth({
       },
     }),
   ],
-  secret: process.env.NEXTAUTH_SECRET,  // Make sure this is set in your .env.local
+  secret: process.env.NEXTAUTH_SECRET,
   session: {
-    strategy: "jwt", // Use JWT strategy
+    strategy: "jwt",
   },
   callbacks: {
-    async jwt({ token, user, account }) {
-      // Initial sign in
-      if (account && user) {
-        return {
-          ...token,
-          accessToken: account.access_token,
-          // You might want to add other relevant fields here, like user ID
-        };
+    async jwt({ token, account }) {
+      if (account) {
+        token.accessToken = account.access_token;
       }
-      // Return previous token if the access token has not expired yet
       return token;
     },
     async session({ session, token }) {
-      // Send properties to the client
       session.accessToken = token.accessToken;
-       // You could also add user ID here if you added it to the token:
-       // session.userId = token.userId;
       return session;
     },
   },
