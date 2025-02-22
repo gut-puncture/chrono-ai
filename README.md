@@ -1,11 +1,20 @@
 # Chrono.ai MVP
 
-This is the production-ready code for Phase 1 of the Unified Workspace MVP. It is built with Next.js, Material UI, and NextAuth.js for authentication. It sets up the foundation for further integration with Gmail, Calendar, Gemini LLM, Pinecone, and OpenAI embeddings.
+This repository contains the production-ready code for the Unified Workspace MVP—a web app that aggregates Gmail, Calendar, and chat data with AI processing.
 
-## Getting Started
+## Technologies Used
+
+- **Frontend:** Next.js, React, Material UI, SWR
+- **Authentication:** NextAuth.js (Google OAuth for Gmail & Calendar)
+- **Backend:** Next.js API routes running on Node.js
+- **LLM Processing:** Google Gemini Model API via @google/generative-ai
+- **Data Storage:** Heroku Postgres (via Prisma) for persistent data; Pinecone for vector embeddings (setup in future phases)
+- **Deployment:** GitHub repository connected to Vercel for automatic deployments
+
+## Setup Instructions
 
 ### 1. Clone the Repository
 
 ```bash
-git clone <your-repo-url>
+git clone <github-repo-url>
 cd mvp-unified-workspace
