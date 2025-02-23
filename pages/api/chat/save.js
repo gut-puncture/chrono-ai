@@ -20,13 +20,10 @@ export default async function handler(req, res) {
     }
 
     const { messageText, role, llmResponse, tags } = req.body;
-
-    // If user message, messageText must exist; if LLM message, llmResponse is optional, etc.
     if (!role) {
       return res.status(400).json({ error: "Role is required (e.g., 'user' or 'llm')" });
     }
 
-    // Create the chat record in DB
     await prisma.chatMessage.create({
       data: {
         userId: user.id,
@@ -39,7 +36,7 @@ export default async function handler(req, res) {
 
     res.status(200).json({ message: "Message saved" });
   } catch (error) {
-    console.error("Error saving chat message:", error.message);
+    console.error("Error saving chat message:", error);
     res.status(500).json({ error: "Failed to save message" });
   }
 }
