@@ -5,6 +5,7 @@ import Head from 'next/head';
 import { SessionProvider } from "next-auth/react";
 import { ThemeProvider, createTheme } from '@mui/material/styles';
 import CssBaseline from '@mui/material/CssBaseline';
+import { SWRConfig } from 'swr'; // Import SWRConfig
 
 const theme = createTheme({
   palette: {
@@ -13,7 +14,7 @@ const theme = createTheme({
   },
 });
 
-export default function MyApp({ Component, pageProps: { session, ...pageProps } }) {
+export default function MyApp({ Component, pageProps: { session,...pageProps } }) {
   return (
     <SessionProvider session={session}>
       <Head>
@@ -22,7 +23,11 @@ export default function MyApp({ Component, pageProps: { session, ...pageProps } 
       </Head>
       <ThemeProvider theme={theme}>
         <CssBaseline />
-        <Component {...pageProps} />
+        <SWRConfig value={{
+          fetcher: (url) => fetch(url).then(r => r.json()) // Customize the fetcher as needed
+        }}>
+          <Component {...pageProps} />
+        </SWRConfig>
       </ThemeProvider>
     </SessionProvider>
   );
