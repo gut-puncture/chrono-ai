@@ -1,6 +1,7 @@
 // pages/api/chat/save.js
+import { getServerSession } from "next-auth/next";
+import { authOptions } from "../auth/authOptions";
 import prisma from "../../../lib/prisma";
-import { getSession } from "next-auth/react";
 
 export default async function handler(req, res) {
   if (req.method !== "POST") {
@@ -8,23 +9,30 @@ export default async function handler(req, res) {
   }
 
   try {
-    const session = await getSession({ req });
+    const session = await getServerSession(req, res, authOptions);
+    
     if (!session) {
       return res.status(401).json({ error: "Unauthorized" });
     }
 
     const userEmail = session.user.email;
-    const user = await prisma.user.findUnique({ where: { email: userEmail } });
+    const user = await prisma.user.findUnique({ 
+      where: { email: userEmail } 
+    });
+
     if (!user) {
       return res.status(404).json({ error: "User not found" });
     }
 
     const { messageText, role, llmResponse, tags } = req.body;
+
     if (!role) {
-      return res.status(400).json({ error: "Role is required (e.g., 'user' or 'llm')" });
+      return res.status(400).json({ 
+        error: "Role is required (e.g., 'user' or 'llm')" 
+      });
     }
 
-    await prisma.chatMessage.create({
+    const savedMessage = await prisma.chatMessage.create({
       data: {
         userId: user.id,
         role,
@@ -34,9 +42,16 @@ export default async function handler(req, res) {
       }
     });
 
-    res.status(200).json({ message: "Message saved" });
+    res.status(200).json({ 
+      message: "Message saved",
+      savedMessage 
+    });
+
   } catch (error) {
     console.error("Error saving chat message:", error);
-    res.status(500).json({ error: "Failed to save message" });
+    res.status(500).json({ 
+      error: "Failed to save message",
+      details: error.message 
+    });
   }
 }
