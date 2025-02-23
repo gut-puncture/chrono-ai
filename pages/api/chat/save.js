@@ -1,31 +1,39 @@
 // pages/api/chat/save.js
 import prisma from "../../../lib/prisma";
+import { getSession } from "next-auth/react";
 
 export default async function handler(req, res) {
   if (req.method !== "POST") {
     return res.status(405).json({ error: "Method not allowed" });
   }
-  
-  const { messageText, role, llmResponse, tags } = req.body;
-  
-  if (!messageText || !role) {
-    return res.status(400).json({ error: "Missing required fields" });
-  }
-  
+
   try {
-    // For simplicity, we assume the user is already authenticated
-    // In a full implementation, you would get the user ID from the session
-    const dummyUserId = 1; // TODO: Replace with actual session user ID
+    const session = await getSession({ req });
+    if (!session) {
+      return res.status(401).json({ error: "Unauthorized" });
+    }
+
+    const userEmail = session.user.email;
+    const user = await prisma.user.findUnique({ where: { email: userEmail } });
+    if (!user) {
+      return res.status(404).json({ error: "User not found" });
+    }
+
+    const { messageText, role, llmResponse, tags } = req.body;
+    if (!messageText || !role) {
+      return res.status(400).json({ error: "Missing required fields" });
+    }
+
     await prisma.chatMessage.create({
       data: {
-        userId: dummyUserId,
+        userId: user.id,
         messageText,
         llmResponse: llmResponse || null,
-        // scopeId and tags can be updated later based on further context
         scopeId: null,
-        tags: tags ? tags : {}
+        tags: tags || {}
       }
     });
+
     res.status(200).json({ message: "Message saved" });
   } catch (error) {
     console.error("Error saving chat message:", error.message);
