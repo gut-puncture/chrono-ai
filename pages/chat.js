@@ -28,7 +28,20 @@ export default function Chat() {
       try {
         await ensureAuthenticated();
         const response = await axios.get("/api/chat/history");
-        setChatHistory(response.data.messages);
+        const dbMessages = response.data.messages;
+
+        // Map DB messages to the shape we need for display
+        const mapped = dbMessages.map((msg) => {
+          if (msg.role === "user") {
+            return { role: "user", text: msg.messageText };
+          } else {
+            // role === "llm"
+            // Use llmResponse if present, otherwise fallback
+            return { role: "llm", text: msg.llmResponse || "" };
+          }
+        });
+
+        setChatHistory(mapped);
       } catch (error) {
         console.error("Error fetching chat history:", error);
       }
@@ -103,8 +116,8 @@ export default function Chat() {
         await axios.post("/api/tasks", {
           title: task.title,
           description: "", // or add a field if your LLM provides one
-          dueDate: dueDateValue, 
-          status: "YET_TO_BEGIN", 
+          dueDate: dueDateValue,
+          status: "YET_TO_BEGIN",
           priority: convertPriority(task.priority),
           sourceMessageId: null
         });
@@ -147,7 +160,7 @@ export default function Chat() {
 
       // Save LLM response in DB
       await saveMessageToDB({
-        messageText: input,
+        messageText: input,      // Original user prompt
         role: "llm",
         llmResponse: llmData.acknowledgment,
         tags: llmData.tags
