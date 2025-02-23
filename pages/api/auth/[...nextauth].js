@@ -34,4 +34,15 @@ export default NextAuth({
       return session;
     },
   },
+  cookies: {  // ADDED: Cookie settings
+    sessionToken: {
+      name: "__Secure-next-auth.session-token",
+      options: {
+        httpOnly: true, // Recommended for security
+        sameSite: "none",
+        secure: true,
+        path: '/' // Ensure the cookie is accessible from all paths
+      }
+    }
+  }
 });
