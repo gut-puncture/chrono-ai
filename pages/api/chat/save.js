@@ -20,17 +20,19 @@ export default async function handler(req, res) {
     }
 
     const { messageText, role, llmResponse, tags } = req.body;
-    if (!messageText && !llmResponse) {
-      return res.status(400).json({ error: "Missing required fields" });
+
+    // If user message, messageText must exist; if LLM message, llmResponse is optional, etc.
+    if (!role) {
+      return res.status(400).json({ error: "Role is required (e.g., 'user' or 'llm')" });
     }
 
+    // Create the chat record in DB
     await prisma.chatMessage.create({
       data: {
         userId: user.id,
-        role: role,                      // <-- store the role
-        messageText: messageText || "",  // user’s input if role === "user"
+        role,
+        messageText: messageText || "",
         llmResponse: llmResponse || null,
-        scopeId: null,
         tags: tags || {}
       }
     });
