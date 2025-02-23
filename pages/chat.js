@@ -1,7 +1,15 @@
 // pages/chat.js
 import React, { useState, useEffect, useRef } from "react";
 import { useSession } from "next-auth/react";
-import { Container, Grid, Box, TextField, Button, Typography, Paper } from "@mui/material";
+import {
+  Container,
+  Grid,
+  Box,
+  TextField,
+  Button,
+  Typography,
+  Paper
+} from "@mui/material";
 import axios from "axios";
 
 export default function Chat() {
@@ -11,11 +19,14 @@ export default function Chat() {
   const [chatHistory, setChatHistory] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
   const [isMounted, setIsMounted] = useState(false);
+  const [tasks, setTasks] = useState([]); // <--- We'll store tasks here
   const messagesEndRef = useRef(null);
 
   useEffect(() => {
+    // Fetch chat history on mount
     const fetchChatHistory = async () => {
       try {
+        await ensureAuthenticated();
         const response = await axios.get("/api/chat/history");
         setChatHistory(response.data.messages);
       } catch (error) {
@@ -23,13 +34,32 @@ export default function Chat() {
       }
     };
 
+    // Fetch tasks on mount (so we see them in the right-hand panel)
+    const fetchTasks = async () => {
+      try {
+        await ensureAuthenticated();
+        const response = await axios.get("/api/tasks");
+        setTasks(response.data.tasks);
+      } catch (error) {
+        console.error("Error fetching tasks:", error);
+      }
+    };
+
     if (session) {
       fetchChatHistory();
+      fetchTasks();
     }
 
     setIsMounted(true);
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [session]);
+
+  // Quick helper to ensure we have a valid session
+  const ensureAuthenticated = async () => {
+    if (!session) {
+      throw new Error("User not authenticated");
+    }
+  };
 
   if (!session) {
     return (
@@ -39,7 +69,7 @@ export default function Chat() {
     );
   }
 
-  // Helper function to convert string priority to a numeric value
+  // Convert string priority to numeric
   const convertPriority = (priorityStr) => {
     switch (priorityStr?.toLowerCase()) {
       case "low":
@@ -49,11 +79,11 @@ export default function Chat() {
       case "high":
         return 3;
       default:
-        return 2; // default to medium if not provided
+        return 2; // default to medium
     }
   };
 
-  // Function to persist a message via the backend
+  // Persist a message to the DB
   const saveMessageToDB = async (messageData) => {
     try {
       await axios.post("/api/chat/save", messageData);
@@ -62,15 +92,19 @@ export default function Chat() {
     }
   };
 
-  // Function to create tasks in the DB from LLM response
-  const createTasksFromLLM = async (tasks) => {
-    for (const task of tasks) {
+  // Create tasks in the DB from LLM tasks array
+  const createTasksFromLLM = async (tasksFromLLM) => {
+    for (const task of tasksFromLLM) {
       try {
+        // If your LLM uses "inferred_due_date" instead of "due_date",
+        // adjust accordingly:
+        const dueDateValue = task.inferred_due_date || null;
+
         await axios.post("/api/tasks", {
           title: task.title,
-          description: "", // you can add more details if available
-          dueDate: task.due_date, // may be null
-          status: "YET_TO_BEGIN", // default status
+          description: "", // or add a field if your LLM provides one
+          dueDate: dueDateValue, 
+          status: "YET_TO_BEGIN", 
           priority: convertPriority(task.priority),
           sourceMessageId: null
         });
@@ -78,13 +112,20 @@ export default function Chat() {
         console.error("Error creating task:", error.response?.data || error.message);
       }
     }
+
+    // Refresh tasks after creating them
+    const updatedTasks = await axios.get("/api/tasks");
+    setTasks(updatedTasks.data.tasks);
   };
 
   const sendMessage = async () => {
     if (!input.trim()) return;
 
+    // Add user message to local chat state
     const userMessage = { role: "user", text: input };
     setChatHistory((prev) => [...prev, userMessage]);
+
+    // Save to DB
     await saveMessageToDB({ messageText: input, role: "user" });
     setIsLoading(true);
 
@@ -92,13 +133,19 @@ export default function Chat() {
     const context = chatHistory.slice(-15).map((msg) => msg.text);
 
     try {
+      // Call your LLM API
       const response = await axios.post("/api/llm", { message: input, context });
       const llmData = response.data;
-      
-      // Only display the acknowledgment message to the user
-      const llmMessage = { role: "llm", text: llmData.acknowledgment, details: llmData };
+
+      // Only show the "acknowledgment" to the user
+      const llmMessage = {
+        role: "llm",
+        text: llmData.acknowledgment,
+        details: llmData
+      };
       setChatHistory((prev) => [...prev, llmMessage]);
 
+      // Save LLM response in DB
       await saveMessageToDB({
         messageText: input,
         role: "llm",
@@ -106,7 +153,7 @@ export default function Chat() {
         tags: llmData.tags
       });
 
-      // Create tasks from LLM response if any exist
+      // If LLM returned tasks, create them in DB
       if (llmData.tasks && llmData.tasks.length > 0) {
         await createTasksFromLLM(llmData.tasks);
       }
@@ -128,7 +175,7 @@ export default function Chat() {
   return (
     <Container sx={{ mt: 4 }}>
       <Grid container spacing={2}>
-        {/* Chat and Task List Panel */}
+        {/* --- CHAT PANEL --- */}
         <Grid item xs={8}>
           <Typography variant="h4" gutterBottom>
             Chat Interface
@@ -179,16 +226,35 @@ export default function Chat() {
           </Box>
         </Grid>
 
-        {/* Task List Panel */}
+        {/* --- TASK LIST PANEL --- */}
         {isMounted && (
           <Grid item xs={4}>
             <Typography variant="h5" gutterBottom>
               Task List
             </Typography>
             <Paper variant="outlined" sx={{ height: "60vh", overflowY: "auto", p: 2 }}>
-              <Typography variant="body2" color="textSecondary">
-                (Tasks auto-created from LLM responses will appear here.)
-              </Typography>
+              {tasks.length === 0 ? (
+                <Typography variant="body2" color="textSecondary">
+                  (Tasks auto-created from LLM responses will appear here.)
+                </Typography>
+              ) : (
+                tasks.map((task) => (
+                  <Box key={task.id} sx={{ mb: 1 }}>
+                    <Typography variant="body1" sx={{ fontWeight: "bold" }}>
+                      {task.title}
+                    </Typography>
+                    <Typography variant="body2" color="textSecondary">
+                      Due:{" "}
+                      {task.dueDate
+                        ? new Date(task.dueDate).toLocaleDateString()
+                        : "No due date"}
+                    </Typography>
+                    <Typography variant="body2">
+                      Priority: {task.priority}
+                    </Typography>
+                  </Box>
+                ))
+              )}
             </Paper>
           </Grid>
         )}
