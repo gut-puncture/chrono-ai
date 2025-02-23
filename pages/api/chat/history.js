@@ -19,7 +19,6 @@ export default async function handler(req, res) {
       return res.status(404).json({ error: "User not found" });
     }
 
-    // Fetch chat messages from DB, in chronological order
     const messages = await prisma.chatMessage.findMany({
       where: { userId: user.id },
       orderBy: { createdAt: "asc" }
