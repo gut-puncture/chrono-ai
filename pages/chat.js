@@ -13,7 +13,7 @@ import {
 import axios from "axios";
 
 // *** ADD THIS LINE ***
-axios.defaults.withCredentials = true; // Set globally for all axios requests
+//axios.defaults.withCredentials = true; // Set globally for all axios requests
 
 export default function Chat() {
   // ... (rest of your component code remains the same) ...
