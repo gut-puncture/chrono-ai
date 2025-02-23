@@ -33,7 +33,8 @@ export default async function handler(req, res) {
       "4. Detect if there is a scope change in the conversation; if so, return a boolean 'scopeChange' as true and a 'scopeDemarcation' string that indicates the boundary (e.g. the message ID that needs retroactive tagging update). " +
       "5. Do not include internal tags or scope demarcation details in the user-facing acknowledgment. " +
       "6. Return a JSON object with keys: acknowledgment (string), tasks (array), clarifications (array), tags (object), scopeChange (boolean), scopeDemarcation (string). " +
-      "7. If additional context is provided later, indicate which message IDs need retroactive tag updates (this may be part of the scopeDemarcation info).";
+      "7. If additional context is provided later, indicate which message IDs need retroactive tag updates (this may be part of the scopeDemarcation info)." +
+      "8. Please return valid JSON without triple backticks or code fences.";
     
     // Send prompt to Gemini API
     const result = await model.generateContent(prompt);
