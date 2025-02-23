@@ -12,20 +12,22 @@ export default async function handler(req, res) {
     return res.status(401).json({ error: "Unauthorized" });
   }
 
-  const userEmail = session.user.email;
-  const user = await prisma.user.findUnique({ where: { email: userEmail } });
-  if (!user) {
-    return res.status(404).json({ error: "User not found" });
-  }
-
   try {
+    const userEmail = session.user.email;
+    const user = await prisma.user.findUnique({ where: { email: userEmail } });
+    if (!user) {
+      return res.status(404).json({ error: "User not found" });
+    }
+
+    // Fetch chat messages from DB, in chronological order
     const messages = await prisma.chatMessage.findMany({
       where: { userId: user.id },
-      orderBy: { createdAt: "asc" } // Ensure messages are returned in chronological order
+      orderBy: { createdAt: "asc" }
     });
-    return res.status(200).json({ messages });
+
+    res.status(200).json({ messages });
   } catch (error) {
     console.error("Error fetching chat history:", error);
-    return res.status(500).json({ error: "Failed to fetch chat history" });
+    res.status(500).json({ error: "Failed to fetch chat history" });
   }
 }
