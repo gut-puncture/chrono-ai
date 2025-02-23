@@ -3,9 +3,9 @@ import React, { useState } from "react";
 import useSWR from "swr";
 import axios from "axios";
 import { useSession } from "next-auth/react";
-import { 
-  Container, Typography, Table, TableHead, TableBody, TableRow, 
-  TableCell, TextField, Select, MenuItem, IconButton, Paper 
+import {
+  Container, Typography, Table, TableHead, TableBody, TableRow,
+  TableCell, TextField, Select, MenuItem, IconButton, Paper
 } from "@mui/material";
 import DeleteIcon from '@mui/icons-material/Delete';
 import SaveIcon from '@mui/icons-material/Save';
@@ -15,7 +15,7 @@ const statusOptions = ["YET_TO_BEGIN", "IN_PROGRESS", "DONE"];
 
 export default function TaskTable() {
   const { data: session } = useSession();
-  const { data, mutate } = useSWR(session ? "/api/tasks" : null, fetcher);
+  const { data, mutate } = useSWR(session? "/api/tasks": null, fetcher);
   const [editTaskId, setEditTaskId] = useState(null);
   const [editedTask, setEditedTask] = useState({});
 
@@ -25,7 +25,7 @@ export default function TaskTable() {
     setEditedTask({
       title: task.title,
       description: task.description,
-      dueDate: task.dueDate ? new Date(task.dueDate).toISOString().split("T")[0] : "",
+      dueDate: task.dueDate? new Date(task.dueDate).toISOString().split("T"): "",
       status: task.status,
       priority: task.priority
     });
@@ -54,7 +54,7 @@ export default function TaskTable() {
   };
 
   const handleChange = (field, value) => {
-    setEditedTask((prev) => ({ ...prev, [field]: value }));
+    setEditedTask((prev) => ({...prev, [field]: value }));
   };
 
   if (!session) {
@@ -63,6 +63,10 @@ export default function TaskTable() {
         <Typography variant="h6">Please sign in to view tasks.</Typography>
       </Container>
     );
+  }
+
+  if (!data) {
+    return <div>Loading...</div>; // Or a loading indicator component
   }
 
   return (
@@ -81,41 +85,41 @@ export default function TaskTable() {
             </TableRow>
           </TableHead>
           <TableBody>
-            {data && data.tasks.map((task) => (
+            {data.tasks.map((task) => (
               <TableRow key={task.id}>
                 <TableCell>
-                  {editTaskId === task.id ? (
-                    <TextField 
+                  {editTaskId === task.id? (
+                    <TextField
                       value={editedTask.title}
                       onChange={(e) => handleChange("title", e.target.value)}
                     />
-                  ) : (
+                  ): (
                     task.title
                   )}
                 </TableCell>
                 <TableCell>
-                  {editTaskId === task.id ? (
-                    <TextField 
+                  {editTaskId === task.id? (
+                    <TextField
                       value={editedTask.description || ""}
                       onChange={(e) => handleChange("description", e.target.value)}
                     />
-                  ) : (
+                  ): (
                     task.description
                   )}
                 </TableCell>
                 <TableCell>
-                  {editTaskId === task.id ? (
-                    <TextField 
+                  {editTaskId === task.id? (
+                    <TextField
                       type="date"
                       value={editedTask.dueDate}
                       onChange={(e) => handleChange("dueDate", e.target.value)}
                     />
-                  ) : (
-                    task.dueDate ? new Date(task.dueDate).toLocaleDateString() : ""
+                  ): (
+                    task.dueDate? new Date(task.dueDate).toLocaleDateString(): ""
                   )}
                 </TableCell>
                 <TableCell>
-                  {editTaskId === task.id ? (
+                  {editTaskId === task.id? (
                     <Select
                       value={editedTask.status}
                       onChange={(e) => handleChange("status", e.target.value)}
@@ -124,27 +128,27 @@ export default function TaskTable() {
                         <MenuItem key={status} value={status}>{status.replace("_", " ")}</MenuItem>
                       ))}
                     </Select>
-                  ) : (
+                  ): (
                     task.status.replace("_", " ")
                   )}
                 </TableCell>
                 <TableCell>
-                  {editTaskId === task.id ? (
-                    <TextField 
+                  {editTaskId === task.id? (
+                    <TextField
                       type="number"
                       value={editedTask.priority}
-                      onChange={(e) => handleChange("priority", parseInt(e.target.value))}
+                      onChange={(e) => handleChange("priority", parseInt(e.target.value, 10))}
                     />
-                  ) : (
+                  ): (
                     task.priority
                   )}
                 </TableCell>
                 <TableCell>
-                  {editTaskId === task.id ? (
+                  {editTaskId === task.id? (
                     <IconButton onClick={() => updateTask(task.id)}>
                       <SaveIcon />
                     </IconButton>
-                  ) : (
+                  ): (
                     <>
                       <IconButton onClick={() => handleEdit(task)}>
                         <SaveIcon />
