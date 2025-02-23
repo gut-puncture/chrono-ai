@@ -12,7 +12,11 @@ import {
 } from "@mui/material";
 import axios from "axios";
 
+// *** ADD THIS LINE ***
+axios.defaults.withCredentials = true; // Set globally for all axios requests
+
 export default function Chat() {
+  // ... (rest of your component code remains the same) ...
   const { data: session } = useSession();
   const [input, setInput] = useState("");
   // Initialize chatHistory as an empty array
@@ -27,7 +31,7 @@ export default function Chat() {
     const fetchChatHistory = async () => {
       try {
         await ensureAuthenticated();
-        const response = await axios.get("/api/chat/history", { withCredentials: true }); // CHANGED: Added withCredentials: true
+        const response = await axios.get("/api/chat/history"); // Removed: withCredentials: true
         const dbMessages = response.data.messages;
 
         // Map DB messages to the shape we need for display
@@ -51,7 +55,7 @@ export default function Chat() {
     const fetchTasks = async () => {
       try {
         await ensureAuthenticated();
-        const response = await axios.get("/api/tasks", { withCredentials: true }); // CHANGED: Added withCredentials: true
+        const response = await axios.get("/api/tasks"); // Removed: withCredentials: true
         setTasks(response.data.tasks);
       } catch (error) {
         console.error("Error fetching tasks:", error);
@@ -99,7 +103,7 @@ export default function Chat() {
   // Persist a message to the DB
   const saveMessageToDB = async (messageData) => {
     try {
-      await axios.post("/api/chat/save", messageData, { withCredentials: true }); // CHANGED: Added withCredentials: true
+      await axios.post("/api/chat/save", messageData); // Removed: withCredentials: true
     } catch (error) {
       console.error("Error saving message:", error.response?.data || error.message);
     }
@@ -120,14 +124,14 @@ export default function Chat() {
           status: "YET_TO_BEGIN",
           priority: convertPriority(task.priority),
           sourceMessageId: null
-        }, { withCredentials: true });  // CHANGED: Added withCredentials option here.  This one *wasn't* in the diff you provided, but *should* be added to *every* axios call.
+        });  // Removed: withCredentials: true
       } catch (error) {
         console.error("Error creating task:", error.response?.data || error.message);
       }
     }
 
     // Refresh tasks after creating them
-    const updatedTasks = await axios.get("/api/tasks", { withCredentials: true }); // CHANGED: Added withCredentials: true. Technically not a change from original *code*, but important to maintain consistency with the above.
+    const updatedTasks = await axios.get("/api/tasks"); // Removed: withCredentials: true
     setTasks(updatedTasks.data.tasks);
   };
 
@@ -147,7 +151,7 @@ export default function Chat() {
 
     try {
       // Call your LLM API
-      const response = await axios.post("/api/llm", { message: input, context }, { withCredentials: true }); // CHANGED: Added withCredentials: true
+      const response = await axios.post("/api/llm", { message: input, context }); // Removed: withCredentials: true
       const llmData = response.data;
 
       // Only show the "acknowledgment" to the user
@@ -160,7 +164,7 @@ export default function Chat() {
 
       // Save LLM response in DB
       await saveMessageToDB({
-        messageText: input,    // Original user prompt
+        messageText: input,   // Original user prompt
         role: "llm",
         llmResponse: llmData.acknowledgment,
         tags: llmData.tags
