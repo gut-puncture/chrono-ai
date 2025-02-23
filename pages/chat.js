@@ -7,7 +7,8 @@ import axios from "axios";
 export default function Chat() {
   const { data: session } = useSession();
   const [input, setInput] = useState("");
-  const [chatHistory, setChatHistory] = useState(); // Initialize as an empty array
+  // Initialize chatHistory as an empty array to avoid undefined errors.
+  const [chatHistory, setChatHistory] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
   const [isMounted, setIsMounted] = useState(false); 
   const messagesEndRef = useRef(null);
@@ -85,54 +86,54 @@ export default function Chat() {
     }
   };
 
-return (
-  <Container sx={{ mt: 4 }}>
-    <Grid container spacing={2}>
-      {/* Chat and Task List Panel */}
-      <Grid item xs={8}>
-        <Typography variant="h4" gutterBottom>Chat Interface</Typography>
-        <Paper variant="outlined" sx={{ height: "60vh", overflowY: "auto", p: 2 }}>
-          {chatHistory.map((msg, index) => (
-            <Box key={index} sx={{
-              display: "flex",
-              justifyContent: msg.role === "user"? "flex-end": "flex-start",
-              mb: 1
-            }}>
-              <Paper sx={{ p: 1, maxWidth: "80%", backgroundColor: msg.role === "user"? "#DCF8C6": "#FFFFFF" }}>
-                <Typography variant="body1">{msg.text}</Typography>
-              </Paper>
-            </Box>
-          ))}
-          <div ref={messagesEndRef} />
-        </Paper>
-        <Box sx={{ mt: 2, display: "flex" }}>
-          <TextField
-            fullWidth
-            variant="outlined"
-            placeholder="Type your message..."
-            value={input}
-            onChange={(e) => setInput(e.target.value)}
-            onKeyDown={(e) => { if (e.key === "Enter") sendMessage(); }}
-          />
-          <Button variant="contained" color="primary" onClick={sendMessage} disabled={isLoading} sx={{ ml: 2 }}>
-            Send
-          </Button>
-        </Box>
-      </Grid>
-
-      {/* Conditionally render the Task List Panel */}
-      {isMounted && (
-        <Grid item xs={4}>
-          <Typography variant="h5" gutterBottom>Task List</Typography>
+  return (
+    <Container sx={{ mt: 4 }}>
+      <Grid container spacing={2}>
+        {/* Chat and Task List Panel */}
+        <Grid item xs={8}>
+          <Typography variant="h4" gutterBottom>Chat Interface</Typography>
           <Paper variant="outlined" sx={{ height: "60vh", overflowY: "auto", p: 2 }}>
-            <Typography variant="body2" color="textSecondary">
-              (Task list will appear here once tasks are auto-created and integrated.)
-            </Typography>
+            {chatHistory.map((msg, index) => (
+              <Box key={index} sx={{
+                display: "flex",
+                justifyContent: msg.role === "user" ? "flex-end" : "flex-start",
+                mb: 1
+              }}>
+                <Paper sx={{ p: 1, maxWidth: "80%", backgroundColor: msg.role === "user" ? "#DCF8C6" : "#FFFFFF" }}>
+                  <Typography variant="body1">{msg.text}</Typography>
+                </Paper>
+              </Box>
+            ))}
+            <div ref={messagesEndRef} />
           </Paper>
+          <Box sx={{ mt: 2, display: "flex" }}>
+            <TextField
+              fullWidth
+              variant="outlined"
+              placeholder="Type your message..."
+              value={input}
+              onChange={(e) => setInput(e.target.value)}
+              onKeyDown={(e) => { if (e.key === "Enter") sendMessage(); }}
+            />
+            <Button variant="contained" color="primary" onClick={sendMessage} disabled={isLoading} sx={{ ml: 2 }}>
+              Send
+            </Button>
+          </Box>
         </Grid>
-      )}
 
-    </Grid>
-  </Container>
-);
+        {/* Conditionally render the Task List Panel */}
+        {isMounted && (
+          <Grid item xs={4}>
+            <Typography variant="h5" gutterBottom>Task List</Typography>
+            <Paper variant="outlined" sx={{ height: "60vh", overflowY: "auto", p: 2 }}>
+              <Typography variant="body2" color="textSecondary">
+                (Task list will appear here once tasks are auto-created and integrated.)
+              </Typography>
+            </Paper>
+          </Grid>
+        )}
+
+      </Grid>
+    </Container>
+  );
 }
