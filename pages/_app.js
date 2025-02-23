@@ -5,7 +5,7 @@ import Head from 'next/head';
 import { SessionProvider } from "next-auth/react";
 import { ThemeProvider, createTheme } from '@mui/material/styles';
 import CssBaseline from '@mui/material/CssBaseline';
-import { SWRConfig } from 'swr'; // Import SWRConfig
+import dynamic from 'next/dynamic'; // Import dynamic
 
 const theme = createTheme({
   palette: {
@@ -13,6 +13,11 @@ const theme = createTheme({
     // Add additional theme customization here if needed
   },
 });
+
+const SWRConfig = dynamic(
+  () => import('swr').then((mod) => mod.SWRConfig),
+  { ssr: false }
+);
 
 export default function MyApp({ Component, pageProps: { session,...pageProps } }) {
   return (
