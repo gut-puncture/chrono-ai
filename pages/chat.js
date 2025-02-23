@@ -1,18 +1,19 @@
 // pages/chat.js
 import React, { useState, useEffect, useRef } from "react";
 import { useSession } from "next-auth/react";
-import { Container, Grid, Box, TextField, Button, Typography, Paper, List, ListItem, ListItemText, Divider } from "@mui/material";
+import { Container, Grid, Box, TextField, Button, Typography, Paper } from "@mui/material";
 import axios from "axios";
 
 export default function Chat() {
   const { data: session } = useSession();
   const [input, setInput] = useState("");
-  const [chatHistory, setChatHistory] = useState([]); // Each item: { role, text, id (from DB), details }
+  const [chatHistory, setChatHistory] = useState(); // Each item: { role, text, id (from DB), details }
   const [isLoading, setIsLoading] = useState(false);
+  const [isMounted, setIsMounted] = useState(false); // State to track component mount status
   const messagesEndRef = useRef(null);
 
-  // Scroll to bottom on new message
   useEffect(() => {
+    setIsMounted(true); // Set isMounted to true after component mounts
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [chatHistory]);
 
@@ -35,7 +36,7 @@ export default function Chat() {
 
   const sendMessage = async () => {
     if (!input.trim()) return;
-    
+
     // Create user message object and persist to DB
     const userMessage = { role: "user", text: input };
     setChatHistory(prev => [...prev, userMessage]);
@@ -44,16 +45,16 @@ export default function Chat() {
 
     // Build context: include up to the last 15 messages
     const context = chatHistory.slice(-15).map(msg => msg.text);
-    
+
     try {
       // Call LLM API with message and context
       const response = await axios.post("/api/llm", { message: input, context });
       const llmData = response.data;
-      
+
       // Create LLM message object (only show acknowledgment to the user)
       const llmMessage = { role: "llm", text: llmData.acknowledgment, details: llmData };
       setChatHistory(prev => [...prev, llmMessage]);
-      
+
       // Persist LLM response to DB (store full details in DB but display only acknowledgment)
       await saveMessageToDB({ messageText: input, role: "llm", llmResponse: llmData.acknowledgment, tags: llmData.tags });
     } catch (error) {
@@ -75,26 +76,25 @@ export default function Chat() {
           <Typography variant="h4" gutterBottom>Chat Interface</Typography>
           <Paper variant="outlined" sx={{ height: "60vh", overflowY: "auto", p: 2 }}>
             {chatHistory.map((msg, index) => (
-              <Box key={index} sx={{ 
-                display: "flex", 
-                justifyContent: msg.role === "user" ? "flex-end" : "flex-start", 
-                mb: 1 
+              <Box key={index} sx={{
+                display: "flex",
+                justifyContent: msg.role === "user"? "flex-end": "flex-start",
+                mb: 1
               }}>
-                <Paper sx={{ p: 1, maxWidth: "80%", backgroundColor: msg.role === "user" ? "#DCF8C6" : "#FFFFFF" }}>
+                <Paper sx={{ p: 1, maxWidth: "80%", backgroundColor: msg.role === "user"? "#DCF8C6": "#FFFFFF" }}>
                   <Typography variant="body1">{msg.text}</Typography>
-                  {/* Optionally, internal details like tags can be logged to console */}
                 </Paper>
               </Box>
             ))}
             <div ref={messagesEndRef} />
           </Paper>
           <Box sx={{ mt: 2, display: "flex" }}>
-            <TextField 
-              fullWidth 
-              variant="outlined" 
-              placeholder="Type your message..." 
-              value={input} 
-              onChange={(e) => setInput(e.target.value)} 
+            <TextField
+              fullWidth
+              variant="outlined"
+              placeholder="Type your message..."
+              value={input}
+              onChange={(e) => setInput(e.target.value)}
               onKeyDown={(e) => { if (e.key === "Enter") sendMessage(); }}
             />
             <Button variant="contained" color="primary" onClick={sendMessage} disabled={isLoading} sx={{ ml: 2 }}>
@@ -102,15 +102,19 @@ export default function Chat() {
             </Button>
           </Box>
         </Grid>
-        {/* Persistent Task List Panel (Placeholder) */}
-        <Grid item xs={4}>
-          <Typography variant="h5" gutterBottom>Task List</Typography>
-          <Paper variant="outlined" sx={{ height: "60vh", overflowY: "auto", p: 2 }}>
-            <Typography variant="body2" color="textSecondary">
-              (Task list will appear here once tasks are auto-created and integrated.)
-            </Typography>
-          </Paper>
-        </Grid>
+
+        {/* Conditionally render the Task List Panel */}
+        {isMounted && ( // This ensures the Task List panel is rendered only after the component is mounted
+          <Grid item xs={4}>
+            <Typography variant="h5" gutterBottom>Task List</Typography>
+            <Paper variant="outlined" sx={{ height: "60vh", overflowY: "auto", p: 2 }}>
+              <Typography variant="body2" color="textSecondary">
+                (Task list will appear here once tasks are auto-created and integrated.)
+              </Typography>
+            </Paper>
+          </Grid>
+        )}
+
       </Grid>
     </Container>
   );
