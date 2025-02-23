@@ -12,73 +12,161 @@ import {
 } from "@mui/material";
 import axios from "axios";
 
-// *** ADD THIS LINE ***
-//axios.defaults.withCredentials = true; // Set globally for all axios requests
-
 export default function Chat() {
-  // ... (rest of your component code remains the same) ...
-  const { data: session } = useSession();
+  const { data: session, status } = useSession();
   const [input, setInput] = useState("");
-  // Initialize chatHistory as an empty array
   const [chatHistory, setChatHistory] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
   const [isMounted, setIsMounted] = useState(false);
-  const [tasks, setTasks] = useState([]); // <--- We'll store tasks here
+  const [tasks, setTasks] = useState([]);
   const messagesEndRef = useRef(null);
 
   useEffect(() => {
-    // Fetch chat history on mount
-    const fetchChatHistory = async () => {
-      try {
-        await ensureAuthenticated();
-        const response = await axios.get("/api/chat/history"); // Removed: withCredentials: true
-        const dbMessages = response.data.messages;
+    const fetchInitialData = async () => {
+      if (status === "authenticated") {
+        try {
+          // Fetch chat history
+          const chatResponse = await axios.get("/api/chat/history");
+          const dbMessages = chatResponse.data.messages;
+          
+          const mapped = dbMessages.map((msg) => ({
+            role: msg.role,
+            text: msg.role === "user" ? msg.messageText : (msg.llmResponse || msg.messageText)
+          }));
+          
+          setChatHistory(mapped);
 
-        // Map DB messages to the shape we need for display
-        const mapped = dbMessages.map((msg) => {
-          if (msg.role === "user") {
-            return { role: "user", text: msg.messageText };
-          } else {
-            // role === "llm"
-            // Use llmResponse if present, otherwise fallback
-            return { role: "llm", text: msg.llmResponse || "" };
-          }
-        });
-
-        setChatHistory(mapped);
-      } catch (error) {
-        console.error("Error fetching chat history:", error);
+          // Fetch tasks
+          const taskResponse = await axios.get("/api/tasks");
+          setTasks(taskResponse.data.tasks);
+        } catch (error) {
+          console.error("Error fetching initial data:", error);
+        }
       }
     };
 
-    // Fetch tasks on mount (so we see them in the right-hand panel)
-    const fetchTasks = async () => {
-      try {
-        await ensureAuthenticated();
-        const response = await axios.get("/api/tasks"); // Removed: withCredentials: true
-        setTasks(response.data.tasks);
-      } catch (error) {
-        console.error("Error fetching tasks:", error);
-      }
-    };
-
-    if (session) {
-      fetchChatHistory();
-      fetchTasks();
-    }
-
+    fetchInitialData();
     setIsMounted(true);
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [session]);
+  }, [status]);
 
-  // Quick helper to ensure we have a valid session
-  const ensureAuthenticated = async () => {
-    if (!session) {
-      throw new Error("User not authenticated");
+  // Scroll to bottom whenever chat history updates
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [chatHistory]);
+
+  const saveMessageToDB = async (messageData) => {
+    try {
+      const response = await axios.post("/api/chat/save", messageData);
+      return response.data.savedMessage;
+    } catch (error) {
+      console.error("Error saving message:", error.response?.data || error.message);
+      throw error;
     }
   };
 
-  if (!session) {
+  const createTasksFromLLM = async (tasksFromLLM) => {
+    try {
+      for (const task of tasksFromLLM) {
+        const dueDateValue = task.inferred_due_date || task.due_date || null;
+        
+        await axios.post("/api/tasks", {
+          title: task.title,
+          description: task.description || "",
+          dueDate: dueDateValue,
+          status: "YET_TO_BEGIN",
+          priority: convertPriority(task.priority),
+          sourceMessageId: null
+        });
+      }
+
+      const updatedTasks = await axios.get("/api/tasks");
+      setTasks(updatedTasks.data.tasks);
+    } catch (error) {
+      console.error("Error creating tasks:", error);
+    }
+  };
+
+  const convertPriority = (priorityStr) => {
+    switch (priorityStr?.toLowerCase()) {
+      case "low": return 1;
+      case "high": return 3;
+      default: return 2; // medium
+    }
+  };
+
+  const sendMessage = async () => {
+    if (!input.trim() || !session || status !== "authenticated") return;
+
+    try {
+      setIsLoading(true);
+      
+      // Add user message to local chat state
+      const userMessage = { role: "user", text: input };
+      setChatHistory(prev => [...prev, userMessage]);
+
+      // Save user message to DB
+      await saveMessageToDB({ 
+        messageText: input, 
+        role: "user" 
+      });
+
+      // Get context from recent messages
+      const context = chatHistory
+        .slice(-15)
+        .map(msg => msg.text);
+
+      // Call LLM API
+      const response = await axios.post("/api/llm", { 
+        message: input,
+        context 
+      });
+
+      if (response.data) {
+        const llmMessage = {
+          role: "llm",
+          text: response.data.acknowledgment || response.data.message,
+          details: response.data
+        };
+
+        // Update chat history with LLM response
+        setChatHistory(prev => [...prev, llmMessage]);
+
+        // Save LLM response to DB
+        await saveMessageToDB({
+          messageText: input,
+          role: "llm",
+          llmResponse: llmMessage.text,
+          tags: response.data.tags
+        });
+
+        // Create any tasks from LLM response
+        if (response.data.tasks?.length > 0) {
+          await createTasksFromLLM(response.data.tasks);
+        }
+      }
+
+    } catch (error) {
+      console.error("Error in sendMessage:", error);
+      setChatHistory(prev => [...prev, {
+        role: "llm",
+        text: "Sorry, there was an error processing your message."
+      }]);
+    } finally {
+      setInput("");
+      setIsLoading(false);
+      messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+    }
+  };
+
+  if (status === "loading") {
+    return (
+      <Container sx={{ mt: 4 }}>
+        <Typography>Loading...</Typography>
+      </Container>
+    );
+  }
+
+  if (status === "unauthenticated") {
     return (
       <Container sx={{ mt: 4 }}>
         <Typography variant="h6">Please sign in to access the chat.</Typography>
@@ -86,118 +174,23 @@ export default function Chat() {
     );
   }
 
-  // Convert string priority to numeric
-  const convertPriority = (priorityStr) => {
-    switch (priorityStr?.toLowerCase()) {
-      case "low":
-        return 1;
-      case "medium":
-        return 2;
-      case "high":
-        return 3;
-      default:
-        return 2; // default to medium
-    }
-  };
-
-  // Persist a message to the DB
-  const saveMessageToDB = async (messageData) => {
-    try {
-      await axios.post("/api/chat/save", messageData); // Removed: withCredentials: true
-    } catch (error) {
-      console.error("Error saving message:", error.response?.data || error.message);
-    }
-  };
-
-  // Create tasks in the DB from LLM tasks array
-  const createTasksFromLLM = async (tasksFromLLM) => {
-    for (const task of tasksFromLLM) {
-      try {
-        // If your LLM uses "inferred_due_date" instead of "due_date",
-        // adjust accordingly:
-        const dueDateValue = task.inferred_due_date || null;
-
-        await axios.post("/api/tasks", {
-          title: task.title,
-          description: "", // or add a field if your LLM provides one
-          dueDate: dueDateValue,
-          status: "YET_TO_BEGIN",
-          priority: convertPriority(task.priority),
-          sourceMessageId: null
-        });  // Removed: withCredentials: true
-      } catch (error) {
-        console.error("Error creating task:", error.response?.data || error.message);
-      }
-    }
-
-    // Refresh tasks after creating them
-    const updatedTasks = await axios.get("/api/tasks"); // Removed: withCredentials: true
-    setTasks(updatedTasks.data.tasks);
-  };
-
-  const sendMessage = async () => {
-    if (!input.trim()) return;
-
-    // Add user message to local chat state
-    const userMessage = { role: "user", text: input };
-    setChatHistory((prev) => [...prev, userMessage]);
-
-    // Save to DB
-    await saveMessageToDB({ messageText: input, role: "user" });
-    setIsLoading(true);
-
-    // Build context from the last 15 messages
-    const context = chatHistory.slice(-15).map((msg) => msg.text);
-
-    try {
-      // Call your LLM API
-      const response = await axios.post("/api/llm", { message: input, context }); // Removed: withCredentials: true
-      const llmData = response.data;
-
-      // Only show the "acknowledgment" to the user
-      const llmMessage = {
-        role: "llm",
-        text: llmData.acknowledgment,
-        details: llmData
-      };
-      setChatHistory((prev) => [...prev, llmMessage]);
-
-      // Save LLM response in DB
-      await saveMessageToDB({
-        messageText: input,   // Original user prompt
-        role: "llm",
-        llmResponse: llmData.acknowledgment,
-        tags: llmData.tags
-      });
-
-      // If LLM returned tasks, create them in DB
-      if (llmData.tasks && llmData.tasks.length > 0) {
-        await createTasksFromLLM(llmData.tasks);
-      }
-    } catch (error) {
-      console.error("LLM API error:", error.response?.data || error.message);
-      const errorMessage = { role: "llm", text: "Error processing message" };
-      setChatHistory((prev) => [...prev, errorMessage]);
-      await saveMessageToDB({
-        messageText: input,
-        role: "llm",
-        llmResponse: "Error processing message"
-      });
-    } finally {
-      setInput("");
-      setIsLoading(false);
-    }
-  };
-
   return (
     <Container sx={{ mt: 4 }}>
       <Grid container spacing={2}>
-        {/* --- CHAT PANEL --- */}
+        {/* Chat Panel */}
         <Grid item xs={8}>
           <Typography variant="h4" gutterBottom>
             Chat Interface
           </Typography>
-          <Paper variant="outlined" sx={{ height: "60vh", overflowY: "auto", p: 2 }}>
+          <Paper 
+            variant="outlined" 
+            sx={{ 
+              height: "60vh", 
+              overflowY: "auto", 
+              p: 2,
+              bgcolor: "background.paper" 
+            }}
+          >
             {chatHistory.map((msg, index) => (
               <Box
                 key={index}
@@ -211,7 +204,8 @@ export default function Chat() {
                   sx={{
                     p: 1,
                     maxWidth: "80%",
-                    backgroundColor: msg.role === "user" ? "#DCF8C6" : "#FFFFFF"
+                    backgroundColor: msg.role === "user" ? "#DCF8C6" : "#FFFFFF",
+                    boxShadow: 1
                   }}
                 >
                   <Typography variant="body1">{msg.text}</Typography>
@@ -220,6 +214,7 @@ export default function Chat() {
             ))}
             <div ref={messagesEndRef} />
           </Paper>
+          
           <Box sx={{ mt: 2, display: "flex" }}>
             <TextField
               fullWidth
@@ -228,8 +223,14 @@ export default function Chat() {
               value={input}
               onChange={(e) => setInput(e.target.value)}
               onKeyDown={(e) => {
-                if (e.key === "Enter") sendMessage();
+                if (e.key === "Enter" && !e.shiftKey) {
+                  e.preventDefault();
+                  sendMessage();
+                }
               }}
+              disabled={isLoading}
+              multiline
+              maxRows={4}
             />
             <Button
               variant="contained"
@@ -243,26 +244,41 @@ export default function Chat() {
           </Box>
         </Grid>
 
-        {/* --- TASK LIST PANEL --- */}
+        {/* Task List Panel */}
         {isMounted && (
           <Grid item xs={4}>
             <Typography variant="h5" gutterBottom>
               Task List
             </Typography>
-            <Paper variant="outlined" sx={{ height: "60vh", overflowY: "auto", p: 2 }}>
+            <Paper 
+              variant="outlined" 
+              sx={{ 
+                height: "60vh", 
+                overflowY: "auto", 
+                p: 2 
+              }}
+            >
               {tasks.length === 0 ? (
                 <Typography variant="body2" color="textSecondary">
-                  (Tasks auto-created from LLM responses will appear here.)
+                  No tasks available
                 </Typography>
               ) : (
                 tasks.map((task) => (
-                  <Box key={task.id} sx={{ mb: 1 }}>
+                  <Box 
+                    key={task.id} 
+                    sx={{ 
+                      mb: 2,
+                      p: 2,
+                      border: 1,
+                      borderColor: 'divider',
+                      borderRadius: 1
+                    }}
+                  >
                     <Typography variant="body1" sx={{ fontWeight: "bold" }}>
                       {task.title}
                     </Typography>
                     <Typography variant="body2" color="textSecondary">
-                      Due:{" "}
-                      {task.dueDate
+                      Due: {task.dueDate
                         ? new Date(task.dueDate).toLocaleDateString()
                         : "No due date"}
                     </Typography>
