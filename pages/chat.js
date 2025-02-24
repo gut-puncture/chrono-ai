@@ -96,9 +96,10 @@ export default function Chat() {
     }
   };
 
-  // Create tasks from LLM output
-  const createTasksFromLLM = async (tasksFromLLM) => {
+  // Create tasks from LLM output (server side), then re-fetch
+  const createTasksOnServer = async (tasksFromLLM) => {
     try {
+      // 1) For each LLM task, POST to /api/tasks
       for (const task of tasksFromLLM) {
         const dueDateValue = task.inferred_due_date || task.due_date || null;
         await axios.post("/api/tasks", {
@@ -110,11 +111,11 @@ export default function Chat() {
           sourceMessageId: null
         });
       }
-      // Re-fetch tasks to update the UI
+      // 2) Re-fetch tasks from DB to get real IDs
       const updatedTasks = await axios.get("/api/tasks");
       setTasks(updatedTasks.data.tasks);
     } catch (error) {
-      console.error("Error creating tasks:", error);
+      console.error("Error creating tasks on server:", error);
     }
   };
 
@@ -149,7 +150,7 @@ export default function Chat() {
 
       // 5) Process LLM response
       if (response.data) {
-        // Combine acknowledgment + question into one display string
+        // Combine acknowledgment + question
         const ack = response.data.acknowledgment || "";
         const question = response.data.question || "";
         let llmCombinedText = ack;
@@ -175,9 +176,23 @@ export default function Chat() {
           tags: response.data.tags
         });
 
-        // 8) Create tasks if any
+        // 8) If the LLM returned tasks, show them immediately in local state
         if (response.data.tasks?.length > 0) {
-          await createTasksFromLLM(response.data.tasks);
+          // 8a) Insert them in local state with temporary IDs
+          const newLocalTasks = response.data.tasks.map((task, idx) => ({
+            id: "temp-" + idx + "-" + Date.now(),
+            title: task.title,
+            description: task.description || "",
+            dueDate: task.inferred_due_date || task.due_date || null,
+            status: "YET_TO_BEGIN",
+            priority: convertPriority(task.priority),
+            // just a flag so we know these are not from the DB yet
+            isTemp: true
+          }));
+          setTasks((prev) => [...prev, ...newLocalTasks]);
+
+          // 8b) Create them on the server
+          await createTasksOnServer(response.data.tasks);
         }
       }
     } catch (error) {
@@ -229,6 +244,12 @@ export default function Chat() {
 
   const deleteTask = async (taskId) => {
     try {
+      // If it's a temporary (not in DB) task, just remove it from local state
+      if (typeof taskId === "string" && taskId.startsWith("temp-")) {
+        setTasks((prev) => prev.filter((t) => t.id !== taskId));
+        return;
+      }
+      // Otherwise, delete from DB
       await axios.delete(`/api/tasks/${taskId}`);
       // Re-fetch tasks
       const updatedTasks = await axios.get("/api/tasks");
