@@ -113,7 +113,9 @@ export default function Chat() {
       // Get context from recent messages
       const context = chatHistory
         .slice(-15)
-        .map(msg => msg.text);
+        .map(msg => msg.text)
+        .filter(text => text); // This removes null, undefined, empty strings, etc.
+
 
       // Call LLM API
       const response = await axios.post("/api/llm", { 
