@@ -165,39 +165,67 @@ export default function Chat() {
 
         // 8) If the LLM returned tasks, create them immediately on the server
         if (response.data.tasks?.length > 0) {
+          console.log("LLM returned tasks:", response.data.tasks);
+          
           try {
-            // Create an array to hold the promises
-            const createPromises = response.data.tasks.map(async (task) => {
-              const taskData = {
-                title: task.title,
-                description: task.description || "",
-                dueDate: task.inferred_due_date || task.due_date || null,
-                status: "YET_TO_BEGIN",
-                priority: convertPriority(task.priority),
-                sourceMessageId: null
-              };
+            // First add temporary tasks to the UI for immediate feedback
+            const tempTasks = response.data.tasks.map((task, idx) => ({
+              id: `temp-${idx}-${Date.now()}`,
+              title: task.title || "New Task",
+              description: task.description || "",
+              dueDate: task.inferred_due_date || task.due_date || null,
+              status: "YET_TO_BEGIN",
+              priority: convertPriority(task.priority),
+              isTemp: true
+            }));
+            
+            // Immediately add temp tasks to state for responsive UI
+            setTasks(prev => [...prev, ...tempTasks]);
+            
+            // Create an array to hold the promises for server creation
+            for (let i = 0; i < response.data.tasks.length; i++) {
+              const task = response.data.tasks[i];
+              const tempTask = tempTasks[i];
               
-              // Create the task on the server
-              const response = await axios.post("/api/tasks", taskData);
-              return response.data.task;
-            });
-            
-            // Wait for all tasks to be created
-            const newTasks = await Promise.all(createPromises);
-            
-            // Add the new tasks to the state with animation
-            setTasks(prev => [...prev, ...newTasks]);
+              try {
+                // Create the task on the server
+                const taskData = {
+                  title: task.title || "New Task",
+                  description: task.description || "",
+                  dueDate: task.inferred_due_date || task.due_date || null,
+                  status: "YET_TO_BEGIN",
+                  priority: convertPriority(task.priority),
+                  sourceMessageId: null
+                };
+                
+                console.log("Creating task on server:", taskData);
+                const serverResponse = await axios.post("/api/tasks", taskData);
+                const savedTask = serverResponse.data.task;
+                
+                // Replace the temp task with the saved task that has a real ID
+                setTasks(prev => 
+                  prev.map(t => t.id === tempTask.id ? savedTask : t)
+                );
+              } catch (err) {
+                console.error(`Error creating task ${i}:`, err);
+              }
+            }
             
             // Smooth scroll to make the new tasks visible
             setTimeout(() => {
-              document.querySelector('.MuiPaper-root[elevation="2"]')?.scrollTo({
-                top: document.querySelector('.MuiPaper-root[elevation="2"]')?.scrollHeight,
-                behavior: 'smooth'
-              });
-            }, 100);
+              const taskContainer = document.querySelector('.MuiPaper-root[elevation="2"]');
+              if (taskContainer) {
+                taskContainer.scrollTo({
+                  top: taskContainer.scrollHeight,
+                  behavior: 'smooth'
+                });
+              }
+            }, 300);
           } catch (error) {
-            console.error("Error creating tasks:", error);
+            console.error("Error processing tasks:", error);
           }
+        } else {
+          console.log("No tasks in LLM response");
         }
       }
     } catch (error) {
@@ -230,53 +258,83 @@ export default function Chat() {
       
       // Prepare data for API call
       const taskToUpdate = tasks.find(t => t.id === taskId);
-      if (!taskToUpdate) return;
+      if (!taskToUpdate) {
+        console.error("Task not found in state:", taskId);
+        return;
+      }
       
       const updatedData = {
-        title: taskToUpdate.title,
+        title: taskToUpdate.title || "New Task",
         description: taskToUpdate.description || "",
         dueDate: taskToUpdate.dueDate,
-        status: taskToUpdate.status,
-        priority: taskToUpdate.priority,
+        status: taskToUpdate.status || "YET_TO_BEGIN",
+        priority: taskToUpdate.priority || 2,
         [field]: value // Override the specific field
       };
       
+      console.log(`Updating task field ${field} for task ${taskId}:`, updatedData);
+      
       // If it's a temporary task (from LLM), create it on server
       if (typeof taskId === "string" && taskId.startsWith("temp-")) {
-        const response = await axios.post("/api/tasks", {
-          ...updatedData,
-          dueDate: updatedData.dueDate || null,
-          sourceMessageId: null
-        });
-        
-        // Replace temp task with server task in local state
-        setTasks(prevTasks => 
-          prevTasks.map(task => 
-            task.id === taskId ? response.data.task : task
-          )
-        );
+        console.log("Creating temporary task on server:", updatedData);
+        try {
+          const response = await axios.post("/api/tasks", {
+            ...updatedData,
+            dueDate: updatedData.dueDate || null,
+            sourceMessageId: null
+          });
+          
+          const savedTask = response.data.task;
+          console.log("Task created on server:", savedTask);
+          
+          // Replace temp task with server task in local state
+          setTasks(prevTasks => 
+            prevTasks.map(task => 
+              task.id === taskId ? savedTask : task
+            )
+          );
+        } catch (err) {
+          console.error("Error creating task from temp:", err);
+        }
       } else {
         // Update existing task on server
-        await axios.put(`/api/tasks/${taskId}`, updatedData);
+        console.log(`Updating existing task ${taskId} on server:`, updatedData);
+        try {
+          await axios.put(`/api/tasks/${taskId}`, updatedData);
+        } catch (err) {
+          console.error(`Error updating task ${taskId}:`, err);
+        }
       }
     } catch (error) {
-      console.error("Error updating task:", error.response?.data || error.message);
+      console.error("Error in handleUpdateTaskField:", error);
     }
   };
 
   const deleteTask = async (taskId) => {
     try {
-      // If it's a temporary (not in DB) task, just remove it from local state
+      console.log(`Deleting task ${taskId}`);
+      
+      // Immediately remove from UI for responsive feel
+      setTasks((prev) => prev.filter((t) => t.id !== taskId));
+      
+      // If it's a temporary (not in DB) task, we're done
       if (typeof taskId === "string" && taskId.startsWith("temp-")) {
-        setTasks((prev) => prev.filter((t) => t.id !== taskId));
+        console.log("Removed temporary task from state");
         return;
       }
+      
       // Otherwise, delete from DB
-      await axios.delete(`/api/tasks/${taskId}`);
-      // Update local state to avoid refetching
-      setTasks((prev) => prev.filter((t) => t.id !== taskId));
+      try {
+        console.log(`Deleting task ${taskId} from database`);
+        await axios.delete(`/api/tasks/${taskId}`);
+        console.log(`Task ${taskId} deleted successfully`);
+      } catch (err) {
+        console.error(`Error deleting task ${taskId} from database:`, err);
+        // If deletion fails, we don't restore the task to the UI to avoid confusion
+        // But in a production app, you might want to show an error and restore it
+      }
     } catch (error) {
-      console.error("Error deleting task:", error.response?.data || error.message);
+      console.error("Error in deleteTask:", error);
     }
   };
 

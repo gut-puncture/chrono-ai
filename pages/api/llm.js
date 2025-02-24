@@ -50,9 +50,10 @@ You must output valid JSON with exactly these keys:
 Details for each key:
 1. "acknowledgment": A short user-facing message summarizing your response.
 2. "question": If you have a clarifying question for the user, put it here; otherwise "".
-3. "tasks": An array of objects. Each object can have:
-   - "title": string
-   - "dueDate": string or null
+3. "tasks": An array of objects. Each task object can have:
+   - "title": string (required)
+   - "description": string (optional)
+   - "due_date" or "dueDate" or "inferred_due_date": string (optional, ISO format date)
    - "priority": string (e.g., "low", "medium", "high")
 4. "tags": An object for any metadata or an empty object if not needed.
 5. "scopeChange": A boolean (true or false).
@@ -85,7 +86,16 @@ Do not wrap the JSON in triple backticks or code fences.
       jsonResponse = {
         acknowledgment: jsonResponse.acknowledgment || "",
         question: jsonResponse.question || "",
-        tasks: Array.isArray(jsonResponse.tasks) ? jsonResponse.tasks : [],
+        tasks: Array.isArray(jsonResponse.tasks) ? jsonResponse.tasks.map(task => {
+          // Ensure each task has a title
+          if (!task.title || typeof task.title !== 'string') {
+            console.warn("Task missing title or title not a string:", task);
+            task.title = "New Task";
+          }
+          
+          console.log("Task from LLM:", task);
+          return task;
+        }) : [],
         tags: typeof jsonResponse.tags === "object" ? jsonResponse.tags : {},
         scopeChange: !!jsonResponse.scopeChange,
         scopeDemarcation: jsonResponse.scopeDemarcation || ""
