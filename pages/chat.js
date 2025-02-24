@@ -1,4 +1,3 @@
-// pages/chat.js
 import React, { useState, useEffect, useRef } from "react";
 import { useSession } from "next-auth/react";
 import {
@@ -8,19 +7,36 @@ import {
   TextField,
   Button,
   Typography,
-  Paper
+  Paper,
+  Table,
+  TableHead,
+  TableBody,
+  TableRow,
+  TableCell,
+  IconButton,
+  Select,
+  MenuItem
 } from "@mui/material";
 import axios from "axios";
+import DeleteIcon from "@mui/icons-material/Delete";
+import SaveIcon from "@mui/icons-material/Save";
 
 export default function Chat() {
   const { data: session, status } = useSession();
+
+  // Chat state
   const [input, setInput] = useState("");
   const [chatHistory, setChatHistory] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
   const [isMounted, setIsMounted] = useState(false);
-  const [tasks, setTasks] = useState([]);
   const messagesEndRef = useRef(null);
 
+  // Task state
+  const [tasks, setTasks] = useState([]);
+  const [editTaskId, setEditTaskId] = useState(null);
+  const [editedTask, setEditedTask] = useState({});
+
+  // Fetch chat history and tasks on mount (if authenticated)
   useEffect(() => {
     const fetchInitialData = async () => {
       if (status === "authenticated") {
@@ -32,14 +48,11 @@ export default function Chat() {
           // 2) Map DB messages into a format for chatHistory
           const mapped = dbMessages.map((msg) => ({
             role: msg.role,
-            // For "user" role, use msg.messageText
-            // For "llm" role, use llmResponse if present, else messageText
             text:
               msg.role === "user"
                 ? msg.messageText
                 : msg.llmResponse || msg.messageText
           }));
-
           setChatHistory(mapped);
 
           // 3) Fetch tasks
@@ -71,12 +84,23 @@ export default function Chat() {
     }
   };
 
+  // Convert LLM's priority text to a numeric priority
+  const convertPriority = (priorityStr) => {
+    switch (priorityStr?.toLowerCase()) {
+      case "low":
+        return 1;
+      case "high":
+        return 3;
+      default:
+        return 2; // medium
+    }
+  };
+
   // Create tasks from LLM output
   const createTasksFromLLM = async (tasksFromLLM) => {
     try {
       for (const task of tasksFromLLM) {
         const dueDateValue = task.inferred_due_date || task.due_date || null;
-
         await axios.post("/api/tasks", {
           title: task.title,
           description: task.description || "",
@@ -86,24 +110,11 @@ export default function Chat() {
           sourceMessageId: null
         });
       }
-
       // Re-fetch tasks to update the UI
       const updatedTasks = await axios.get("/api/tasks");
       setTasks(updatedTasks.data.tasks);
     } catch (error) {
       console.error("Error creating tasks:", error);
-    }
-  };
-
-  // Convert string priority to numeric priority
-  const convertPriority = (priorityStr) => {
-    switch (priorityStr?.toLowerCase()) {
-      case "low":
-        return 1;
-      case "high":
-        return 3;
-      default:
-        return 2; // medium
     }
   };
 
@@ -125,7 +136,6 @@ export default function Chat() {
       });
 
       // 3) Build context from recent messages (up to 15)
-      //    Filter out empty or null text
       const context = chatHistory
         .slice(-15)
         .map((msg) => msg.text)
@@ -158,7 +168,6 @@ export default function Chat() {
         setChatHistory((prev) => [...prev, llmMessage]);
 
         // 7) Save LLM message to DB
-        //    Important: store the LLM's text (NOT the user input)
         await saveMessageToDB({
           messageText: llmCombinedText,
           role: "llm",
@@ -187,6 +196,50 @@ export default function Chat() {
     }
   };
 
+  // -- TASK EDITING LOGIC --
+
+  const handleEdit = (task) => {
+    setEditTaskId(task.id);
+    setEditedTask({
+      title: task.title,
+      description: task.description,
+      dueDate: task.dueDate
+        ? new Date(task.dueDate).toISOString().split("T")[0]
+        : "",
+      status: task.status,
+      priority: task.priority
+    });
+  };
+
+  const handleTaskFieldChange = (field, value) => {
+    setEditedTask((prev) => ({ ...prev, [field]: value }));
+  };
+
+  const updateTask = async (taskId) => {
+    try {
+      await axios.put(`/api/tasks/${taskId}`, editedTask);
+      setEditTaskId(null);
+      // Re-fetch tasks to see the changes
+      const updatedTasks = await axios.get("/api/tasks");
+      setTasks(updatedTasks.data.tasks);
+    } catch (error) {
+      console.error("Error updating task:", error.response?.data || error.message);
+    }
+  };
+
+  const deleteTask = async (taskId) => {
+    try {
+      await axios.delete(`/api/tasks/${taskId}`);
+      // Re-fetch tasks
+      const updatedTasks = await axios.get("/api/tasks");
+      setTasks(updatedTasks.data.tasks);
+    } catch (error) {
+      console.error("Error deleting task:", error.response?.data || error.message);
+    }
+  };
+
+  const statusOptions = ["YET_TO_BEGIN", "IN_PROGRESS", "DONE"];
+
   // Handle loading or unauthenticated states
   if (status === "loading") {
     return (
@@ -207,7 +260,7 @@ export default function Chat() {
   return (
     <Container sx={{ mt: 4 }}>
       <Grid container spacing={2}>
-        {/* Chat Panel */}
+        {/* CHAT PANEL */}
         <Grid item xs={8}>
           <Typography variant="h4" gutterBottom>
             Chat Interface
@@ -276,7 +329,7 @@ export default function Chat() {
           </Box>
         </Grid>
 
-        {/* Task List Panel */}
+        {/* TASK LIST PANEL */}
         {isMounted && (
           <Grid item xs={4}>
             <Typography variant="h5" gutterBottom>
@@ -287,6 +340,7 @@ export default function Chat() {
               sx={{
                 height: "60vh",
                 overflowY: "auto",
+                overflowX: "auto",
                 p: 2
               }}
             >
@@ -295,31 +349,119 @@ export default function Chat() {
                   No tasks available
                 </Typography>
               ) : (
-                tasks.map((task) => (
-                  <Box
-                    key={task.id}
-                    sx={{
-                      mb: 2,
-                      p: 2,
-                      border: 1,
-                      borderColor: "divider",
-                      borderRadius: 1
-                    }}
-                  >
-                    <Typography variant="body1" sx={{ fontWeight: "bold" }}>
-                      {task.title}
-                    </Typography>
-                    <Typography variant="body2" color="textSecondary">
-                      Due:{" "}
-                      {task.dueDate
-                        ? new Date(task.dueDate).toLocaleDateString()
-                        : "No due date"}
-                    </Typography>
-                    <Typography variant="body2">
-                      Priority: {task.priority}
-                    </Typography>
-                  </Box>
-                ))
+                <Table>
+                  <TableHead>
+                    <TableRow>
+                      <TableCell>Title</TableCell>
+                      <TableCell>Description</TableCell>
+                      <TableCell>Due Date</TableCell>
+                      <TableCell>Status</TableCell>
+                      <TableCell>Priority</TableCell>
+                      <TableCell>Actions</TableCell>
+                    </TableRow>
+                  </TableHead>
+                  <TableBody>
+                    {tasks.map((task) => (
+                      <TableRow key={task.id}>
+                        <TableCell>
+                          {editTaskId === task.id ? (
+                            <TextField
+                              value={editedTask.title}
+                              onChange={(e) =>
+                                handleTaskFieldChange("title", e.target.value)
+                              }
+                            />
+                          ) : (
+                            task.title
+                          )}
+                        </TableCell>
+                        <TableCell>
+                          {editTaskId === task.id ? (
+                            <TextField
+                              value={editedTask.description || ""}
+                              onChange={(e) =>
+                                handleTaskFieldChange(
+                                  "description",
+                                  e.target.value
+                                )
+                              }
+                            />
+                          ) : (
+                            task.description
+                          )}
+                        </TableCell>
+                        <TableCell>
+                          {editTaskId === task.id ? (
+                            <TextField
+                              type="date"
+                              value={editedTask.dueDate}
+                              onChange={(e) =>
+                                handleTaskFieldChange(
+                                  "dueDate",
+                                  e.target.value
+                                )
+                              }
+                            />
+                          ) : (
+                            task.dueDate
+                              ? new Date(task.dueDate).toLocaleDateString()
+                              : ""
+                          )}
+                        </TableCell>
+                        <TableCell>
+                          {editTaskId === task.id ? (
+                            <Select
+                              value={editedTask.status}
+                              onChange={(e) =>
+                                handleTaskFieldChange("status", e.target.value)
+                              }
+                            >
+                              {statusOptions.map((statusVal) => (
+                                <MenuItem key={statusVal} value={statusVal}>
+                                  {statusVal.replace("_", " ")}
+                                </MenuItem>
+                              ))}
+                            </Select>
+                          ) : (
+                            task.status.replace("_", " ")
+                          )}
+                        </TableCell>
+                        <TableCell>
+                          {editTaskId === task.id ? (
+                            <TextField
+                              type="number"
+                              value={editedTask.priority}
+                              onChange={(e) =>
+                                handleTaskFieldChange(
+                                  "priority",
+                                  parseInt(e.target.value, 10)
+                                )
+                              }
+                            />
+                          ) : (
+                            task.priority
+                          )}
+                        </TableCell>
+                        <TableCell>
+                          {editTaskId === task.id ? (
+                            <IconButton onClick={() => updateTask(task.id)}>
+                              <SaveIcon />
+                            </IconButton>
+                          ) : (
+                            <>
+                              <IconButton onClick={() => handleEdit(task)}>
+                                <SaveIcon />
+                              </IconButton>
+                              <IconButton onClick={() => deleteTask(task.id)}>
+                                <DeleteIcon />
+                              </IconButton>
+                            </>
+                          )}
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
               )}
             </Paper>
           </Grid>
@@ -328,4 +470,3 @@ export default function Chat() {
     </Container>
   );
 }
-
