@@ -25,18 +25,24 @@ export default function Chat() {
     const fetchInitialData = async () => {
       if (status === "authenticated") {
         try {
-          // Fetch chat history
+          // 1) Fetch chat history from DB
           const chatResponse = await axios.get("/api/chat/history");
           const dbMessages = chatResponse.data.messages;
-          
+
+          // 2) Map DB messages into a format for chatHistory
           const mapped = dbMessages.map((msg) => ({
             role: msg.role,
-            text: msg.role === "user" ? msg.messageText : (msg.llmResponse || msg.messageText)
+            // For "user" role, use msg.messageText
+            // For "llm" role, use llmResponse if present, else messageText
+            text:
+              msg.role === "user"
+                ? msg.messageText
+                : msg.llmResponse || msg.messageText
           }));
-          
+
           setChatHistory(mapped);
 
-          // Fetch tasks
+          // 3) Fetch tasks
           const taskResponse = await axios.get("/api/tasks");
           setTasks(taskResponse.data.tasks);
         } catch (error) {
@@ -54,6 +60,7 @@ export default function Chat() {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [chatHistory]);
 
+  // Save a message (user or llm) to the DB
   const saveMessageToDB = async (messageData) => {
     try {
       const response = await axios.post("/api/chat/save", messageData);
@@ -64,11 +71,12 @@ export default function Chat() {
     }
   };
 
+  // Create tasks from LLM output
   const createTasksFromLLM = async (tasksFromLLM) => {
     try {
       for (const task of tasksFromLLM) {
         const dueDateValue = task.inferred_due_date || task.due_date || null;
-        
+
         await axios.post("/api/tasks", {
           title: task.title,
           description: task.description || "",
@@ -79,6 +87,7 @@ export default function Chat() {
         });
       }
 
+      // Re-fetch tasks to update the UI
       const updatedTasks = await axios.get("/api/tasks");
       setTasks(updatedTasks.data.tasks);
     } catch (error) {
@@ -86,73 +95,91 @@ export default function Chat() {
     }
   };
 
+  // Convert string priority to numeric priority
   const convertPriority = (priorityStr) => {
     switch (priorityStr?.toLowerCase()) {
-      case "low": return 1;
-      case "high": return 3;
-      default: return 2; // medium
+      case "low":
+        return 1;
+      case "high":
+        return 3;
+      default:
+        return 2; // medium
     }
   };
 
+  // Send a message to the LLM
   const sendMessage = async () => {
     if (!input.trim() || !session || status !== "authenticated") return;
 
     try {
       setIsLoading(true);
-      
-      // Add user message to local chat state
-      const userMessage = { role: "user", text: input };
-      setChatHistory(prev => [...prev, userMessage]);
 
-      // Save user message to DB
-      await saveMessageToDB({ 
-        messageText: input, 
-        role: "user" 
+      // 1) Add user message to local state
+      const userMessage = { role: "user", text: input };
+      setChatHistory((prev) => [...prev, userMessage]);
+
+      // 2) Save user message to DB
+      await saveMessageToDB({
+        messageText: input,
+        role: "user"
       });
 
-      // Get context from recent messages
+      // 3) Build context from recent messages (up to 15)
+      //    Filter out empty or null text
       const context = chatHistory
         .slice(-15)
-        .map(msg => msg.text)
-        .filter(text => text); // This removes null, undefined, empty strings, etc.
+        .map((msg) => msg.text)
+        .filter(Boolean);
 
-
-      // Call LLM API
-      const response = await axios.post("/api/llm", { 
+      // 4) Call the LLM endpoint
+      const response = await axios.post("/api/llm", {
         message: input,
-        context 
+        context
       });
 
+      // 5) Process LLM response
       if (response.data) {
+        // Combine acknowledgment + question into one display string
+        const ack = response.data.acknowledgment || "";
+        const question = response.data.question || "";
+        let llmCombinedText = ack;
+        if (question.trim()) {
+          llmCombinedText += "\n\n" + question;
+        }
+
+        // Create an llm message object
         const llmMessage = {
           role: "llm",
-          text: response.data.acknowledgment || response.data.message,
+          text: llmCombinedText,
           details: response.data
         };
 
-        // Update chat history with LLM response
-        setChatHistory(prev => [...prev, llmMessage]);
+        // 6) Update chat history in the UI
+        setChatHistory((prev) => [...prev, llmMessage]);
 
-        // Save LLM response to DB
+        // 7) Save LLM message to DB
+        //    Important: store the LLM's text (NOT the user input)
         await saveMessageToDB({
-          messageText: input,
+          messageText: llmCombinedText,
           role: "llm",
-          llmResponse: llmMessage.text,
+          llmResponse: llmCombinedText,
           tags: response.data.tags
         });
 
-        // Create any tasks from LLM response
+        // 8) Create tasks if any
         if (response.data.tasks?.length > 0) {
           await createTasksFromLLM(response.data.tasks);
         }
       }
-
     } catch (error) {
       console.error("Error in sendMessage:", error);
-      setChatHistory(prev => [...prev, {
-        role: "llm",
-        text: "Sorry, there was an error processing your message."
-      }]);
+      setChatHistory((prev) => [
+        ...prev,
+        {
+          role: "llm",
+          text: "Sorry, there was an error processing your message."
+        }
+      ]);
     } finally {
       setInput("");
       setIsLoading(false);
@@ -160,6 +187,7 @@ export default function Chat() {
     }
   };
 
+  // Handle loading or unauthenticated states
   if (status === "loading") {
     return (
       <Container sx={{ mt: 4 }}>
@@ -184,13 +212,13 @@ export default function Chat() {
           <Typography variant="h4" gutterBottom>
             Chat Interface
           </Typography>
-          <Paper 
-            variant="outlined" 
-            sx={{ 
-              height: "60vh", 
-              overflowY: "auto", 
+          <Paper
+            variant="outlined"
+            sx={{
+              height: "60vh",
+              overflowY: "auto",
               p: 2,
-              bgcolor: "background.paper" 
+              bgcolor: "background.paper"
             }}
           >
             {chatHistory.map((msg, index) => (
@@ -198,7 +226,8 @@ export default function Chat() {
                 key={index}
                 sx={{
                   display: "flex",
-                  justifyContent: msg.role === "user" ? "flex-end" : "flex-start",
+                  justifyContent:
+                    msg.role === "user" ? "flex-end" : "flex-start",
                   mb: 1
                 }}
               >
@@ -206,7 +235,8 @@ export default function Chat() {
                   sx={{
                     p: 1,
                     maxWidth: "80%",
-                    backgroundColor: msg.role === "user" ? "#DCF8C6" : "#FFFFFF",
+                    backgroundColor:
+                      msg.role === "user" ? "#DCF8C6" : "#FFFFFF",
                     boxShadow: 1
                   }}
                 >
@@ -216,7 +246,7 @@ export default function Chat() {
             ))}
             <div ref={messagesEndRef} />
           </Paper>
-          
+
           <Box sx={{ mt: 2, display: "flex" }}>
             <TextField
               fullWidth
@@ -252,12 +282,12 @@ export default function Chat() {
             <Typography variant="h5" gutterBottom>
               Task List
             </Typography>
-            <Paper 
-              variant="outlined" 
-              sx={{ 
-                height: "60vh", 
-                overflowY: "auto", 
-                p: 2 
+            <Paper
+              variant="outlined"
+              sx={{
+                height: "60vh",
+                overflowY: "auto",
+                p: 2
               }}
             >
               {tasks.length === 0 ? (
@@ -266,13 +296,13 @@ export default function Chat() {
                 </Typography>
               ) : (
                 tasks.map((task) => (
-                  <Box 
-                    key={task.id} 
-                    sx={{ 
+                  <Box
+                    key={task.id}
+                    sx={{
                       mb: 2,
                       p: 2,
                       border: 1,
-                      borderColor: 'divider',
+                      borderColor: "divider",
                       borderRadius: 1
                     }}
                   >
@@ -280,7 +310,8 @@ export default function Chat() {
                       {task.title}
                     </Typography>
                     <Typography variant="body2" color="textSecondary">
-                      Due: {task.dueDate
+                      Due:{" "}
+                      {task.dueDate
                         ? new Date(task.dueDate).toLocaleDateString()
                         : "No due date"}
                     </Typography>
@@ -297,3 +328,4 @@ export default function Chat() {
     </Container>
   );
 }
+
