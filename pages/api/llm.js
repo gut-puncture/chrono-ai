@@ -13,14 +13,17 @@ export default async function handler(req, res) {
   }
 
   try {
+    // Filter out any null or undefined items from the context array
+    const cleanedContext = Array.isArray(context) ? context.filter(Boolean) : [];
+
     const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
-    const model = genAI.getGenerativeModel({ model: "gemini-2.0-flash" });
+    const model = genAI.getGenerativeModel({ model: "gemini-2.0-flash-exp" });
 
     // Build prompt with extended instructions:
     let prompt = "";
-    if (context && Array.isArray(context) && context.length > 0) {
-      prompt += "Previous conversation (most recent 10-15 messages):\n";
-      context.forEach((msg, index) => {
+    if (cleanedContext.length > 0) {
+      prompt += "Previous conversation (most recent 15 messages):\n";
+      cleanedContext.forEach((msg, index) => {
         prompt += `Message ${index + 1}: ${msg}\n`;
       });
       prompt += "\n";
@@ -37,11 +40,20 @@ export default async function handler(req, res) {
       "7. If additional context is provided later, indicate which message IDs need retroactive tag updates (this may be part of the scopeDemarcation info). " +
       "8. Please return valid JSON without triple backticks or code fences.";
 
+    // Log the final prompt so you can see it in Vercel logs
     console.log("Final prompt being sent to LLM:\n", prompt);
-
+    
     // Send prompt to Gemini API
     const result = await model.generateContent(prompt);
+    
+    // Log the raw result object from the library
+    console.log("Raw LLM result object:", result);
+    
     let responseText = await result.response.text();
+
+    // Log the raw text from the model
+    console.log("Raw response text from LLM:", responseText);
+    
 
     // Remove any triple-backtick fenced code blocks
     responseText = responseText.replace(/```[\s\S]*?```/g, "");
