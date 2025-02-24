@@ -13,17 +13,17 @@ export default async function handler(req, res) {
   }
 
   try {
-    // Filter out null or undefined items from the context array
+    // 1) Filter out null or undefined items from the context array
     const cleanedContext = Array.isArray(context) ? context.filter(Boolean) : [];
 
-    // Initialize the Generative AI client
+    // 2) Initialize the Generative AI client
     const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
 
     // If you don't have access to Gemini, switch to "chat-bison-001"
     const model = genAI.getGenerativeModel({ model: "gemini-2.0-flash" });
     // const model = genAI.getGenerativeModel({ model: "chat-bison-001" });
 
-    // Build prompt
+    // 3) Build the prompt with conversation context
     let prompt = "";
     if (cleanedContext.length > 0) {
       prompt += `Previous conversation (most recent ${cleanedContext.length} messages):\n`;
@@ -35,36 +35,50 @@ export default async function handler(req, res) {
 
     prompt += `User: ${message}\n\n`;
 
-    // Updated instructions:
-    //   - We require two main fields: "acknowledgment" and "question".
-    //   - "question" can be empty if there's no question to ask the user.
-    //   - We also keep "tasks", "tags", etc. if you want them.
-    prompt += `Instructions: 
-1. Provide an "acknowledgment" string that the user will see.
-2. If you have a clarifying question for the user, put it in "question" (string). Otherwise set "question" to "".
-3. If there are tasks to create, return them in a "tasks" array (each task is an object with "title", "dueDate", and "priority").
-4. You may include a "tags" object if needed.
-5. Also return "scopeChange" (boolean) and "scopeDemarcation" (string) if needed.
-6. The final JSON must have keys: "acknowledgment", "question", "tasks", "tags", "scopeChange", "scopeDemarcation".
-7. Do not use triple backticks or code fences. Return only valid JSON. 
+    // 4) Refined instructions for an exact JSON structure
+    prompt += `Instructions:
+You must output valid JSON with exactly these keys:
+{
+  "acknowledgment": string,
+  "question": string,
+  "tasks": array,
+  "tags": object,
+  "scopeChange": boolean,
+  "scopeDemarcation": string
+}
+
+Details for each key:
+1. "acknowledgment": A short user-facing message summarizing your response.
+2. "question": If you have a clarifying question for the user, put it here; otherwise "".
+3. "tasks": An array of objects. Each object can have:
+   - "title": string
+   - "dueDate": string or null
+   - "priority": string (e.g., "low", "medium", "high")
+4. "tags": An object for any metadata or an empty object if not needed.
+5. "scopeChange": A boolean (true or false).
+6. "scopeDemarcation": A string (could be "" if not applicable).
+
+Do not add any extra keys or text. Return only the JSON object.
+Do not wrap the JSON in triple backticks or code fences.
 `;
 
-    // Log the prompt in Vercel logs for debugging
+    // Log the final prompt for debugging
     console.log("Final prompt to LLM:\n", prompt);
 
-    // Call the model
+    // 5) Call the model
     const result = await model.generateContent(prompt);
 
-    // Check raw result
+    // Log raw result
     console.log("Raw LLM result object:", result);
 
+    // 6) Extract the text from the LLM response
     let responseText = await result.response.text();
     console.log("Raw response text from LLM:", responseText);
 
-    // Remove any triple-backtick fenced code blocks
-    responseText = responseText.replace(/```[\s\S]*?```/g, "");
+    // Remove only literal backticks, preserving the JSON content
+    responseText = responseText.replace(/```/g, "");
 
-    // Attempt to parse as JSON
+    // 7) Attempt to parse the response as JSON
     let jsonResponse;
     try {
       jsonResponse = JSON.parse(responseText);
@@ -79,7 +93,7 @@ export default async function handler(req, res) {
         scopeDemarcation: jsonResponse.scopeDemarcation || ""
       };
     } catch (e) {
-      // If parse fails, fallback
+      // If parse fails, fallback to showing raw text in "acknowledgment"
       console.error("JSON parse error:", e);
       jsonResponse = {
         acknowledgment: responseText,
@@ -91,6 +105,7 @@ export default async function handler(req, res) {
       };
     }
 
+    // 8) Return the JSON response
     return res.status(200).json(jsonResponse);
   } catch (error) {
     console.error("Error processing LLM request:", error);
