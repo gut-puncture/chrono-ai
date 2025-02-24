@@ -37,6 +37,8 @@ export default async function handler(req, res) {
       "7. If additional context is provided later, indicate which message IDs need retroactive tag updates (this may be part of the scopeDemarcation info). " +
       "8. Please return valid JSON without triple backticks or code fences.";
 
+    console.log("Final prompt being sent to LLM:\n", prompt);
+
     // Send prompt to Gemini API
     const result = await model.generateContent(prompt);
     let responseText = await result.response.text();
