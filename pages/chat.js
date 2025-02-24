@@ -233,10 +233,21 @@ export default function Chat() {
   const updateTask = async (taskId) => {
     try {
       await axios.put(`/api/tasks/${taskId}`, editedTask);
+      
+      // Update local state to avoid refetching
+      setTasks((prevTasks) => 
+        prevTasks.map((task) => 
+          task.id === taskId 
+            ? { 
+                ...task, 
+                ...editedTask, 
+                dueDate: editedTask.dueDate ? new Date(editedTask.dueDate) : null 
+              } 
+            : task
+        )
+      );
+      
       setEditTaskId(null);
-      // Re-fetch tasks to see the changes
-      const updatedTasks = await axios.get("/api/tasks");
-      setTasks(updatedTasks.data.tasks);
     } catch (error) {
       console.error("Error updating task:", error.response?.data || error.message);
     }
@@ -251,15 +262,26 @@ export default function Chat() {
       }
       // Otherwise, delete from DB
       await axios.delete(`/api/tasks/${taskId}`);
-      // Re-fetch tasks
-      const updatedTasks = await axios.get("/api/tasks");
-      setTasks(updatedTasks.data.tasks);
+      // Update local state to avoid refetching
+      setTasks((prev) => prev.filter((t) => t.id !== taskId));
     } catch (error) {
       console.error("Error deleting task:", error.response?.data || error.message);
     }
   };
 
+  // Handle row click to start editing
+  const handleRowClick = (task) => {
+    if (editTaskId !== task.id) {
+      handleEdit(task);
+    }
+  };
+
   const statusOptions = ["YET_TO_BEGIN", "IN_PROGRESS", "DONE"];
+  const priorityLabels = {
+    1: "Low",
+    2: "Medium",
+    3: "High"
+  };
 
   // Handle loading or unauthenticated states
   if (status === "loading") {
@@ -361,128 +383,229 @@ export default function Chat() {
               sx={{
                 height: "60vh",
                 overflowY: "auto",
-                overflowX: "auto",
-                p: 2
+                p: 2,
+                bgcolor: "#fafafa"
               }}
             >
               {tasks.length === 0 ? (
-                <Typography variant="body2" color="textSecondary">
+                <Typography variant="body2" color="textSecondary" sx={{ p: 2, textAlign: "center" }}>
                   No tasks available
                 </Typography>
               ) : (
-                <Table>
-                  <TableHead>
-                    <TableRow>
-                      <TableCell>Title</TableCell>
-                      <TableCell>Description</TableCell>
-                      <TableCell>Due Date</TableCell>
-                      <TableCell>Status</TableCell>
-                      <TableCell>Priority</TableCell>
-                      <TableCell>Actions</TableCell>
-                    </TableRow>
-                  </TableHead>
-                  <TableBody>
-                    {tasks.map((task) => (
-                      <TableRow key={task.id}>
-                        <TableCell>
-                          {editTaskId === task.id ? (
-                            <TextField
-                              value={editedTask.title}
-                              onChange={(e) =>
-                                handleTaskFieldChange("title", e.target.value)
-                              }
-                            />
-                          ) : (
-                            task.title
-                          )}
-                        </TableCell>
-                        <TableCell>
-                          {editTaskId === task.id ? (
-                            <TextField
-                              value={editedTask.description || ""}
-                              onChange={(e) =>
-                                handleTaskFieldChange(
-                                  "description",
-                                  e.target.value
-                                )
-                              }
-                            />
-                          ) : (
-                            task.description
-                          )}
-                        </TableCell>
-                        <TableCell>
-                          {editTaskId === task.id ? (
-                            <TextField
-                              type="date"
-                              value={editedTask.dueDate}
-                              onChange={(e) =>
-                                handleTaskFieldChange(
-                                  "dueDate",
-                                  e.target.value
-                                )
-                              }
-                            />
-                          ) : (
-                            task.dueDate
-                              ? new Date(task.dueDate).toLocaleDateString()
-                              : ""
-                          )}
-                        </TableCell>
-                        <TableCell>
-                          {editTaskId === task.id ? (
-                            <Select
-                              value={editedTask.status}
-                              onChange={(e) =>
-                                handleTaskFieldChange("status", e.target.value)
-                              }
-                            >
-                              {statusOptions.map((statusVal) => (
-                                <MenuItem key={statusVal} value={statusVal}>
-                                  {statusVal.replace("_", " ")}
-                                </MenuItem>
-                              ))}
-                            </Select>
-                          ) : (
-                            task.status.replace("_", " ")
-                          )}
-                        </TableCell>
-                        <TableCell>
-                          {editTaskId === task.id ? (
-                            <TextField
-                              type="number"
-                              value={editedTask.priority}
-                              onChange={(e) =>
-                                handleTaskFieldChange(
-                                  "priority",
-                                  parseInt(e.target.value, 10)
-                                )
-                              }
-                            />
-                          ) : (
-                            task.priority
-                          )}
-                        </TableCell>
-                        <TableCell>
-                          {editTaskId === task.id ? (
-                            <IconButton onClick={() => updateTask(task.id)}>
-                              <SaveIcon />
-                            </IconButton>
-                          ) : (
-                            <>
-                              <IconButton onClick={() => handleEdit(task)}>
+                <Box sx={{ overflowX: "auto" }}>
+                  <Table sx={{ 
+                    minWidth: "100%",
+                    "& .MuiTableCell-root": {
+                      py: 1.5,
+                      px: 1,
+                      transition: "all 0.2s ease"
+                    }
+                  }}>
+                    <TableHead>
+                      <TableRow>
+                        <TableCell width="25%">Title</TableCell>
+                        <TableCell width="30%">Description</TableCell>
+                        <TableCell width="15%">Due Date</TableCell>
+                        <TableCell width="15%">Status</TableCell>
+                        <TableCell width="10%">Priority</TableCell>
+                        <TableCell width="5%">Actions</TableCell>
+                      </TableRow>
+                    </TableHead>
+                    <TableBody>
+                      {tasks.map((task) => (
+                        <TableRow 
+                          key={task.id} 
+                          onClick={() => handleRowClick(task)}
+                          sx={{
+                            cursor: "pointer",
+                            "&:hover": { bgcolor: "#f0f0f0" },
+                            bgcolor: editTaskId === task.id ? "#e3f2fd" : "inherit",
+                            transition: "background-color 0.3s ease"
+                          }}
+                        >
+                          <TableCell>
+                            {editTaskId === task.id ? (
+                              <TextField
+                                fullWidth
+                                size="small"
+                                variant="outlined"
+                                value={editedTask.title}
+                                onChange={(e) =>
+                                  handleTaskFieldChange("title", e.target.value)
+                                }
+                                onClick={(e) => e.stopPropagation()}
+                              />
+                            ) : (
+                              <Typography noWrap>{task.title}</Typography>
+                            )}
+                          </TableCell>
+                          <TableCell>
+                            {editTaskId === task.id ? (
+                              <TextField
+                                fullWidth
+                                size="small"
+                                multiline
+                                maxRows={3}
+                                variant="outlined"
+                                value={editedTask.description || ""}
+                                onChange={(e) =>
+                                  handleTaskFieldChange(
+                                    "description",
+                                    e.target.value
+                                  )
+                                }
+                                onClick={(e) => e.stopPropagation()}
+                              />
+                            ) : (
+                              <Typography 
+                                noWrap 
+                                sx={{ 
+                                  maxWidth: "100%",
+                                  overflow: "hidden",
+                                  textOverflow: "ellipsis"
+                                }}
+                              >
+                                {task.description}
+                              </Typography>
+                            )}
+                          </TableCell>
+                          <TableCell>
+                            {editTaskId === task.id ? (
+                              <TextField
+                                type="date"
+                                size="small"
+                                fullWidth
+                                variant="outlined"
+                                value={editedTask.dueDate}
+                                onChange={(e) =>
+                                  handleTaskFieldChange(
+                                    "dueDate",
+                                    e.target.value
+                                  )
+                                }
+                                onClick={(e) => e.stopPropagation()}
+                              />
+                            ) : (
+                              task.dueDate
+                                ? new Date(task.dueDate).toLocaleDateString()
+                                : "-"
+                            )}
+                          </TableCell>
+                          <TableCell>
+                            {editTaskId === task.id ? (
+                              <Select
+                                fullWidth
+                                size="small"
+                                value={editedTask.status}
+                                onChange={(e) =>
+                                  handleTaskFieldChange("status", e.target.value)
+                                }
+                                onClick={(e) => e.stopPropagation()}
+                              >
+                                {statusOptions.map((statusVal) => (
+                                  <MenuItem key={statusVal} value={statusVal}>
+                                    {statusVal.replace(/_/g, " ")}
+                                  </MenuItem>
+                                ))}
+                              </Select>
+                            ) : (
+                              <Typography
+                                sx={{
+                                  p: 0.5,
+                                  borderRadius: 1,
+                                  textAlign: "center",
+                                  bgcolor: 
+                                    task.status === "DONE" 
+                                      ? "success.light" 
+                                      : task.status === "IN_PROGRESS" 
+                                        ? "warning.light" 
+                                        : "info.light",
+                                  color: 
+                                    task.status === "DONE" 
+                                      ? "success.contrastText" 
+                                      : task.status === "IN_PROGRESS" 
+                                        ? "warning.contrastText" 
+                                        : "info.contrastText"
+                                }}
+                              >
+                                {task.status.replace(/_/g, " ")}
+                              </Typography>
+                            )}
+                          </TableCell>
+                          <TableCell>
+                            {editTaskId === task.id ? (
+                              <Select
+                                fullWidth
+                                size="small"
+                                value={editedTask.priority}
+                                onChange={(e) =>
+                                  handleTaskFieldChange(
+                                    "priority",
+                                    parseInt(e.target.value, 10)
+                                  )
+                                }
+                                onClick={(e) => e.stopPropagation()}
+                              >
+                                {[1, 2, 3].map((val) => (
+                                  <MenuItem key={val} value={val}>
+                                    {priorityLabels[val]}
+                                  </MenuItem>
+                                ))}
+                              </Select>
+                            ) : (
+                              <Typography
+                                sx={{
+                                  p: 0.5,
+                                  borderRadius: 1,
+                                  textAlign: "center",
+                                  bgcolor: 
+                                    task.priority === 3 
+                                      ? "error.light" 
+                                      : task.priority === 2 
+                                        ? "warning.light" 
+                                        : "success.light",
+                                  color: 
+                                    task.priority === 3 
+                                      ? "error.contrastText" 
+                                      : task.priority === 2 
+                                        ? "warning.contrastText" 
+                                        : "success.contrastText"
+                                }}
+                              >
+                                {priorityLabels[task.priority] || task.priority}
+                              </Typography>
+                            )}
+                          </TableCell>
+                          <TableCell>
+                            {editTaskId === task.id ? (
+                              <IconButton 
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  updateTask(task.id);
+                                }}
+                                color="primary"
+                                size="small"
+                              >
                                 <SaveIcon />
                               </IconButton>
-                              <IconButton onClick={() => deleteTask(task.id)}>
+                            ) : (
+                              <IconButton 
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  deleteTask(task.id);
+                                }}
+                                color="error"
+                                size="small"
+                              >
                                 <DeleteIcon />
                               </IconButton>
-                            </>
-                          )}
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
+                            )}
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </Box>
               )}
             </Paper>
           </Grid>
