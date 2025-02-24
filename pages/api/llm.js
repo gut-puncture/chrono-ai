@@ -6,24 +6,24 @@ export default async function handler(req, res) {
     return res.status(405).json({ error: "Method not allowed" });
   }
 
-  const { message, context } = req.body; // 'context' is an array of previous message texts
+  const { message, context } = req.body;
 
   if (!message) {
     return res.status(400).json({ error: "Message is required" });
   }
 
   try {
-    // 1) Filter out null or undefined items from the context array
+    // 1) Filter out null/undefined items from context
     const cleanedContext = Array.isArray(context) ? context.filter(Boolean) : [];
 
     // 2) Initialize the Generative AI client
     const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
 
-    // If you don't have access to Gemini, switch to "chat-bison-001"
+    // If you don't have Gemini access, swap to "chat-bison-001"
     const model = genAI.getGenerativeModel({ model: "gemini-2.0-flash" });
     // const model = genAI.getGenerativeModel({ model: "chat-bison-001" });
 
-    // 3) Build the prompt with conversation context
+    // 3) Build prompt
     let prompt = "";
     if (cleanedContext.length > 0) {
       prompt += `Previous conversation (most recent ${cleanedContext.length} messages):\n`;
@@ -62,28 +62,26 @@ Do not add any extra keys or text. Return only the JSON object.
 Do not wrap the JSON in triple backticks or code fences.
 `;
 
-    // Log the final prompt for debugging
     console.log("Final prompt to LLM:\n", prompt);
 
     // 5) Call the model
     const result = await model.generateContent(prompt);
-
-    // Log raw result
     console.log("Raw LLM result object:", result);
 
-    // 6) Extract the text from the LLM response
+    // 6) Get raw text
     let responseText = await result.response.text();
     console.log("Raw response text from LLM:", responseText);
 
-    // Remove only literal backticks, preserving the JSON content
-    responseText = responseText.replace(/```/g, "");
+    // 7) Remove triple backticks and any language spec like "```json"
+    //    This handles cases where the model still wraps the JSON.
+    responseText = responseText.replace(/```[a-zA-Z]*\n?/g, ""); // remove ```json or ```js, etc.
+    responseText = responseText.replace(/```/g, "");            // remove any remaining triple backticks
 
-    // 7) Attempt to parse the response as JSON
+    // 8) Parse the JSON
     let jsonResponse;
     try {
       jsonResponse = JSON.parse(responseText);
-
-      // Ensure all required keys are present, or fill defaults
+      // Ensure all required keys are present
       jsonResponse = {
         acknowledgment: jsonResponse.acknowledgment || "",
         question: jsonResponse.question || "",
@@ -93,8 +91,8 @@ Do not wrap the JSON in triple backticks or code fences.
         scopeDemarcation: jsonResponse.scopeDemarcation || ""
       };
     } catch (e) {
-      // If parse fails, fallback to showing raw text in "acknowledgment"
       console.error("JSON parse error:", e);
+      // If parsing fails, put the raw text in acknowledgment so user sees something
       jsonResponse = {
         acknowledgment: responseText,
         question: "",
@@ -105,7 +103,6 @@ Do not wrap the JSON in triple backticks or code fences.
       };
     }
 
-    // 8) Return the JSON response
     return res.status(200).json(jsonResponse);
   } catch (error) {
     console.error("Error processing LLM request:", error);
