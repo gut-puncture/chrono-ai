@@ -15,10 +15,19 @@ export default async function handler(req, res) {
   }
 
   if (req.method === "GET") {
-    // Fetch tasks in ascending priority
+    // Fetch tasks ordered by status (incomplete first), priority, and creation date
     const tasks = await prisma.task.findMany({
-      where: { userId: user.id },
-      orderBy: { priority: "asc" }
+      where: { 
+        userId: user.id,
+        // Don't fetch completed tasks
+        NOT: {
+          status: "DONE"
+        }
+      },
+      orderBy: [
+        { priority: "desc" },
+        { createdAt: "desc" }
+      ]
     });
     return res.status(200).json({ tasks });
   } else if (req.method === "POST") {
@@ -32,7 +41,8 @@ export default async function handler(req, res) {
         dueDate: dueDate ? new Date(dueDate) : null,
         status: status || "YET_TO_BEGIN",
         priority: priority || 2, // default medium priority
-        sourceMessageId: sourceMessageId || null
+        sourceMessageId: sourceMessageId || null,
+        createdAt: new Date() // Explicitly set creation date
       }
     });
     return res.status(201).json({ task: newTask });

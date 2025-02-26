@@ -33,6 +33,7 @@ export default function Chat() {
 
   // Task state
   const [tasks, setTasks] = useState([]);
+  const [taskRefreshKey, setTaskRefreshKey] = useState(0); // Add refresh key for forcing updates
 
   // Fetch chat history and tasks on mount (if authenticated)
   useEffect(() => {
@@ -84,20 +85,14 @@ export default function Chat() {
         try {
           const response = await axios.get("/api/tasks");
           if (response?.data?.tasks) {
-            console.log("Refreshed tasks from server:", response.data.tasks);
-            setTasks(prev => {
-              // Only replace if we got tasks back and there are actual differences
-              if (response.data.tasks.length > 0 || prev.length === 0) {
-                return response.data.tasks;
-              }
-              return prev;
-            });
+            setTasks(response.data.tasks);
+            setTaskRefreshKey(prev => prev + 1); // Force refresh of task list
           }
         } catch (err) {
           console.error("Error in task refresh interval:", err);
         }
       }
-    }, 30000); // Refresh every 30 seconds
+    }, 10000); // Refresh every 10 seconds instead of 30
     
     // Clean up interval on unmount
     return () => clearInterval(taskRefreshInterval);
@@ -205,101 +200,41 @@ export default function Chat() {
           console.log("LLM returned tasks:", response.data.tasks);
           
           try {
-            // First add temporary tasks to the UI for immediate feedback
-            const tempTasks = response.data.tasks.map((task, idx) => ({
-              id: `temp-${idx}-${Date.now()}`,
-              title: task.title || "New Task",
-              description: task.description || "",
-              dueDate: task.inferred_due_date || task.due_date || null,
-              status: "YET_TO_BEGIN",
-              priority: convertPriority(task.priority),
-              isTemp: true
-            }));
-            
-            // Immediately add temp tasks to state for responsive UI
-            setTasks(prev => [...prev, ...tempTasks]);
-            
-            // Create an array to hold the promises for server creation
-            const createTaskPromises = response.data.tasks.map((task, i) => {
-              const tempTask = tempTasks[i];
-              
-              return new Promise(async (resolve) => {
-                try {
-                  // Create the task data
-                  const taskData = {
-                    title: task.title || "New Task",
-                    description: task.description || "",
-                    dueDate: task.inferred_due_date || task.due_date || null,
-                    status: "YET_TO_BEGIN",
-                    priority: convertPriority(task.priority),
-                    sourceMessageId: null
-                  };
-                  
-                  console.log("Creating task on server:", taskData);
-                  
-                  // Try up to 3 times to create the task
-                  let retries = 3;
-                  let savedTask = null;
-                  
-                  while (retries > 0 && !savedTask) {
-                    try {
-                      const serverResponse = await axios.post("/api/tasks", taskData);
-                      savedTask = serverResponse.data.task;
-                      
-                      // Replace the temp task with the saved task that has a real ID
-                      setTasks(prev => 
-                        prev.map(t => t.id === tempTask.id ? savedTask : t)
-                      );
-                      
-                      console.log(`Task ${i} created successfully:`, savedTask);
-                      resolve(savedTask);
-                      return;
-                    } catch (createErr) {
-                      retries--;
-                      console.error(`Error creating task ${i} (retries left: ${retries}):`, createErr);
-                      if (retries > 0) {
-                        await new Promise(r => setTimeout(r, 500)); // Wait before retry
-                      }
-                    }
-                  }
-                  
-                  if (!savedTask) {
-                    console.error(`Failed to create task ${i} after multiple attempts`);
-                    resolve(null);
-                  }
-                } catch (err) {
-                  console.error(`Error in task ${i} creation process:`, err);
-                  resolve(null);
-                }
-              });
-            });
-            
-            // Wait for all task creation attempts to complete
-            try {
-              const createdTasks = await Promise.all(createTaskPromises);
-              console.log(`${createdTasks.filter(Boolean).length} of ${createTaskPromises.length} tasks successfully created`);
-              
-              // Refresh task list from server to ensure we have the latest data
+            // Create tasks one by one to ensure proper ordering
+            for (const task of response.data.tasks) {
               try {
-                const refreshResponse = await axios.get("/api/tasks");
-                setTasks(refreshResponse.data.tasks);
-              } catch (refreshErr) {
-                console.error("Error refreshing tasks after creation:", refreshErr);
+                const taskData = {
+                  title: task.title || "New Task",
+                  description: task.description || "",
+                  dueDate: task.inferred_due_date || task.due_date || null,
+                  status: "YET_TO_BEGIN",
+                  priority: convertPriority(task.priority)
+                };
+                
+                console.log("Creating task on server:", taskData);
+                
+                const response = await axios.post("/api/tasks", taskData);
+                const savedTask = response.data.task;
+                
+                // Update tasks list with the new task
+                setTasks(prev => [...prev, savedTask]);
+                
+              } catch (createErr) {
+                console.error("Error creating individual task:", createErr);
               }
-            } catch (allErr) {
-              console.error("Error in batch task creation:", allErr);
             }
             
-            // Smooth scroll to make the new tasks visible
-            setTimeout(() => {
-              const taskContainer = document.querySelector('.MuiPaper-root[elevation="2"]');
-              if (taskContainer) {
-                taskContainer.scrollTo({
-                  top: taskContainer.scrollHeight,
-                  behavior: 'smooth'
-                });
+            // Refresh task list from server to ensure consistency
+            try {
+              const refreshResponse = await axios.get("/api/tasks");
+              if (refreshResponse?.data?.tasks) {
+                setTasks(refreshResponse.data.tasks);
+                setTaskRefreshKey(prev => prev + 1); // Force refresh
               }
-            }, 300);
+            } catch (refreshErr) {
+              console.error("Error refreshing tasks after creation:", refreshErr);
+            }
+            
           } catch (error) {
             console.error("Error processing tasks:", error);
           }
