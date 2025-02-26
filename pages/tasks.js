@@ -43,13 +43,24 @@ export default function TaskTable() {
     }
   };
 
-  // Delete a task
+  // Mark a task as completed instead of deleting
   const deleteTask = async (taskId) => {
     try {
-      await axios.delete(`/api/tasks/${taskId}`);
-      mutate();
+      // Get the task to update
+      const task = data.tasks.find(t => t.id === taskId);
+      if (!task) {
+        console.error("Task not found:", taskId);
+        return;
+      }
+      
+      // Update the task status to DONE instead of deleting
+      await axios.put(`/api/tasks/${taskId}`, {
+        ...task,
+        status: "DONE"
+      });
+      mutate(); // Refresh the task list
     } catch (error) {
-      console.error("Error deleting task:", error.response?.data || error.message);
+      console.error("Error marking task as done:", error.response?.data || error.message);
     }
   };
 

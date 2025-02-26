@@ -15,7 +15,7 @@ export default async function handler(req, res) {
       return res.status(401).json({ error: "Unauthorized" });
     }
 
-    // Delete all chat messages
+    // Delete all chat messages but leave other tables intact
     await prisma.chatMessage.deleteMany({});
 
     res.status(200).json({ 

@@ -39,31 +39,68 @@ export default function Chat() {
     const fetchInitialData = async () => {
       if (status === "authenticated") {
         try {
-          // 1) Fetch chat history from DB
-          const chatResponse = await axios.get("/api/chat/history");
-          const dbMessages = chatResponse.data.messages;
+          // Fetch both chat history and tasks in parallel
+          const [chatResponse, taskResponse] = await Promise.all([
+            axios.get("/api/chat/history").catch(err => {
+              console.error("Error fetching chat history:", err);
+              return { data: { messages: [] } }; // Provide fallback
+            }),
+            axios.get("/api/tasks").catch(err => {
+              console.error("Error fetching tasks:", err);
+              return { data: { tasks: [] } }; // Provide fallback
+            })
+          ]);
 
-          // 2) Map DB messages into a format for chatHistory
-          const mapped = dbMessages.map((msg) => ({
-            role: msg.role,
-            text:
-              msg.role === "user"
-                ? msg.messageText
-                : msg.llmResponse || msg.messageText
-          }));
-          setChatHistory(mapped);
+          // Process chat messages if successful
+          if (chatResponse?.data?.messages) {
+            const dbMessages = chatResponse.data.messages;
+            const mapped = dbMessages.map((msg) => ({
+              role: msg.role,
+              text:
+                msg.role === "user"
+                  ? msg.messageText
+                  : msg.llmResponse || msg.messageText
+            }));
+            setChatHistory(mapped);
+          }
 
-          // 3) Fetch tasks
-          const taskResponse = await axios.get("/api/tasks");
-          setTasks(taskResponse.data.tasks);
+          // Process tasks if successful
+          if (taskResponse?.data?.tasks) {
+            console.log("Loaded tasks from server:", taskResponse.data.tasks);
+            setTasks(taskResponse.data.tasks);
+          }
         } catch (error) {
-          console.error("Error fetching initial data:", error);
+          console.error("Error in fetchInitialData:", error);
         }
       }
     };
 
     fetchInitialData();
     setIsMounted(true);
+    
+    // Set up an interval to refresh tasks periodically to ensure consistency
+    const taskRefreshInterval = setInterval(async () => {
+      if (status === "authenticated") {
+        try {
+          const response = await axios.get("/api/tasks");
+          if (response?.data?.tasks) {
+            console.log("Refreshed tasks from server:", response.data.tasks);
+            setTasks(prev => {
+              // Only replace if we got tasks back and there are actual differences
+              if (response.data.tasks.length > 0 || prev.length === 0) {
+                return response.data.tasks;
+              }
+              return prev;
+            });
+          }
+        } catch (err) {
+          console.error("Error in task refresh interval:", err);
+        }
+      }
+    }, 30000); // Refresh every 30 seconds
+    
+    // Clean up interval on unmount
+    return () => clearInterval(taskRefreshInterval);
   }, [status]);
 
   // Scroll to bottom whenever chat history updates
@@ -183,32 +220,74 @@ export default function Chat() {
             setTasks(prev => [...prev, ...tempTasks]);
             
             // Create an array to hold the promises for server creation
-            for (let i = 0; i < response.data.tasks.length; i++) {
-              const task = response.data.tasks[i];
+            const createTaskPromises = response.data.tasks.map((task, i) => {
               const tempTask = tempTasks[i];
               
+              return new Promise(async (resolve) => {
+                try {
+                  // Create the task data
+                  const taskData = {
+                    title: task.title || "New Task",
+                    description: task.description || "",
+                    dueDate: task.inferred_due_date || task.due_date || null,
+                    status: "YET_TO_BEGIN",
+                    priority: convertPriority(task.priority),
+                    sourceMessageId: null
+                  };
+                  
+                  console.log("Creating task on server:", taskData);
+                  
+                  // Try up to 3 times to create the task
+                  let retries = 3;
+                  let savedTask = null;
+                  
+                  while (retries > 0 && !savedTask) {
+                    try {
+                      const serverResponse = await axios.post("/api/tasks", taskData);
+                      savedTask = serverResponse.data.task;
+                      
+                      // Replace the temp task with the saved task that has a real ID
+                      setTasks(prev => 
+                        prev.map(t => t.id === tempTask.id ? savedTask : t)
+                      );
+                      
+                      console.log(`Task ${i} created successfully:`, savedTask);
+                      resolve(savedTask);
+                      return;
+                    } catch (createErr) {
+                      retries--;
+                      console.error(`Error creating task ${i} (retries left: ${retries}):`, createErr);
+                      if (retries > 0) {
+                        await new Promise(r => setTimeout(r, 500)); // Wait before retry
+                      }
+                    }
+                  }
+                  
+                  if (!savedTask) {
+                    console.error(`Failed to create task ${i} after multiple attempts`);
+                    resolve(null);
+                  }
+                } catch (err) {
+                  console.error(`Error in task ${i} creation process:`, err);
+                  resolve(null);
+                }
+              });
+            });
+            
+            // Wait for all task creation attempts to complete
+            try {
+              const createdTasks = await Promise.all(createTaskPromises);
+              console.log(`${createdTasks.filter(Boolean).length} of ${createTaskPromises.length} tasks successfully created`);
+              
+              // Refresh task list from server to ensure we have the latest data
               try {
-                // Create the task on the server
-                const taskData = {
-                  title: task.title || "New Task",
-                  description: task.description || "",
-                  dueDate: task.inferred_due_date || task.due_date || null,
-                  status: "YET_TO_BEGIN",
-                  priority: convertPriority(task.priority),
-                  sourceMessageId: null
-                };
-                
-                console.log("Creating task on server:", taskData);
-                const serverResponse = await axios.post("/api/tasks", taskData);
-                const savedTask = serverResponse.data.task;
-                
-                // Replace the temp task with the saved task that has a real ID
-                setTasks(prev => 
-                  prev.map(t => t.id === tempTask.id ? savedTask : t)
-                );
-              } catch (err) {
-                console.error(`Error creating task ${i}:`, err);
+                const refreshResponse = await axios.get("/api/tasks");
+                setTasks(refreshResponse.data.tasks);
+              } catch (refreshErr) {
+                console.error("Error refreshing tasks after creation:", refreshErr);
               }
+            } catch (allErr) {
+              console.error("Error in batch task creation:", allErr);
             }
             
             // Smooth scroll to make the new tasks visible
@@ -280,29 +359,69 @@ export default function Chat() {
       if (typeof taskId === "string" && taskId.startsWith("temp-")) {
         console.log("Creating temporary task on server:", updatedData);
         try {
-          const response = await axios.post("/api/tasks", {
-            ...updatedData,
-            dueDate: updatedData.dueDate || null,
-            sourceMessageId: null
-          });
+          // Use a retry mechanism to ensure the task gets created
+          let retries = 3;
+          let savedTask = null;
           
-          const savedTask = response.data.task;
-          console.log("Task created on server:", savedTask);
+          while (retries > 0 && !savedTask) {
+            try {
+              const response = await axios.post("/api/tasks", {
+                ...updatedData,
+                dueDate: updatedData.dueDate || null,
+                sourceMessageId: null
+              });
+              
+              savedTask = response.data.task;
+              console.log("Task created on server:", savedTask);
+              
+              // Replace temp task with server task in local state
+              setTasks(prevTasks => 
+                prevTasks.map(task => 
+                  task.id === taskId ? savedTask : task
+                )
+              );
+              
+              break; // Success, exit the retry loop
+            } catch (createErr) {
+              retries--;
+              console.error(`Error creating task (retries left: ${retries}):`, createErr);
+              if (retries > 0) {
+                await new Promise(r => setTimeout(r, 1000)); // Wait 1 second before retry
+              }
+            }
+          }
           
-          // Replace temp task with server task in local state
-          setTasks(prevTasks => 
-            prevTasks.map(task => 
-              task.id === taskId ? savedTask : task
-            )
-          );
+          if (!savedTask) {
+            console.error("Failed to create task after multiple attempts");
+          }
+          
         } catch (err) {
-          console.error("Error creating task from temp:", err);
+          console.error("Error in task creation process:", err);
         }
       } else {
         // Update existing task on server
         console.log(`Updating existing task ${taskId} on server:`, updatedData);
         try {
           await axios.put(`/api/tasks/${taskId}`, updatedData);
+          
+          // Verify task was updated by re-fetching tasks
+          // This ensures we have the latest data from the server
+          try {
+            const response = await axios.get("/api/tasks");
+            const serverTasks = response.data.tasks;
+            
+            // If our task exists on the server, update our local state to match
+            const serverTask = serverTasks.find(t => t.id === taskId);
+            if (serverTask) {
+              setTasks(prevTasks => 
+                prevTasks.map(task => 
+                  task.id === taskId ? serverTask : task
+                )
+              );
+            }
+          } catch (fetchErr) {
+            console.error("Error verifying task update:", fetchErr);
+          }
         } catch (err) {
           console.error(`Error updating task ${taskId}:`, err);
         }
@@ -314,26 +433,62 @@ export default function Chat() {
 
   const deleteTask = async (taskId) => {
     try {
-      console.log(`Deleting task ${taskId}`);
+      console.log(`Marking task ${taskId} as deleted in UI`);
       
-      // Immediately remove from UI for responsive feel
-      setTasks((prev) => prev.filter((t) => t.id !== taskId));
+      // Mark the task as visually deleted in UI but keep in state with a flag
+      setTasks((prev) => 
+        prev.map((t) => 
+          t.id === taskId 
+            ? { ...t, isDeleted: true, status: "DONE" } 
+            : t
+        )
+      );
       
-      // If it's a temporary (not in DB) task, we're done
+      // If it's a temporary (not in DB) task, we need to save it first
       if (typeof taskId === "string" && taskId.startsWith("temp-")) {
-        console.log("Removed temporary task from state");
+        const tempTask = tasks.find(t => t.id === taskId);
+        if (tempTask) {
+          try {
+            console.log("Creating task on server before marking as completed:", tempTask);
+            const response = await axios.post("/api/tasks", {
+              title: tempTask.title || "Task",
+              description: tempTask.description || "",
+              dueDate: tempTask.dueDate || null,
+              status: "DONE", // Mark as done to show completion
+              priority: tempTask.priority || 2,
+              sourceMessageId: null
+            });
+            
+            // Update the temporary task with the real ID from server
+            const savedTask = response.data.task;
+            setTasks(prevTasks => 
+              prevTasks.map(task => 
+                task.id === taskId 
+                  ? { ...savedTask, isDeleted: true } 
+                  : task
+              )
+            );
+          } catch (err) {
+            console.error("Error creating deleted task on server:", err);
+          }
+        }
         return;
       }
       
-      // Otherwise, delete from DB
+      // For existing tasks, just update status to DONE but don't delete from DB
       try {
-        console.log(`Deleting task ${taskId} from database`);
-        await axios.delete(`/api/tasks/${taskId}`);
-        console.log(`Task ${taskId} deleted successfully`);
+        console.log(`Updating task ${taskId} status to DONE`);
+        await axios.put(`/api/tasks/${taskId}`, {
+          status: "DONE",
+          // Need to include all required fields for API
+          title: tasks.find(t => t.id === taskId)?.title || "Task",
+          description: tasks.find(t => t.id === taskId)?.description || "",
+          dueDate: tasks.find(t => t.id === taskId)?.dueDate || null,
+          priority: tasks.find(t => t.id === taskId)?.priority || 2
+        });
+        console.log(`Task ${taskId} marked as DONE`);
       } catch (err) {
-        console.error(`Error deleting task ${taskId} from database:`, err);
-        // If deletion fails, we don't restore the task to the UI to avoid confusion
-        // But in a production app, you might want to show an error and restore it
+        console.error(`Error updating task ${taskId} status:`, err);
       }
     } catch (error) {
       console.error("Error in deleteTask:", error);
@@ -506,7 +661,9 @@ export default function Chat() {
                       </TableRow>
                     </TableHead>
                     <TableBody>
-                      {tasks.map((task, index) => (
+                      {tasks
+                        .filter(task => !task.isDeleted) // Only show non-deleted tasks
+                        .map((task, index) => (
                         <TableRow 
                           key={task.id}
                           sx={{
