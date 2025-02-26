@@ -33,7 +33,27 @@ export default function Chat() {
 
   // Task state
   const [tasks, setTasks] = useState([]);
-  const [taskRefreshKey, setTaskRefreshKey] = useState(0); // Add refresh key for forcing updates
+  const [taskRefreshKey, setTaskRefreshKey] = useState(0);
+
+  // Function to fetch tasks
+  const fetchTasks = async () => {
+    if (status === "authenticated") {
+      try {
+        console.log("Fetching tasks...");
+        const response = await axios.get("/api/tasks");
+        console.log("Tasks API Response:", response.data);
+        
+        if (response?.data?.tasks) {
+          console.log("Setting tasks in state:", response.data.tasks);
+          setTasks(response.data.tasks);
+          return response.data.tasks;
+        }
+      } catch (err) {
+        console.error("Error fetching tasks:", err.response?.data || err.message);
+      }
+    }
+    return [];
+  };
 
   // Fetch chat history and tasks on mount (if authenticated)
   useEffect(() => {
@@ -44,11 +64,11 @@ export default function Chat() {
           const [chatResponse, taskResponse] = await Promise.all([
             axios.get("/api/chat/history").catch(err => {
               console.error("Error fetching chat history:", err);
-              return { data: { messages: [] } }; // Provide fallback
+              return { data: { messages: [] } };
             }),
             axios.get("/api/tasks").catch(err => {
               console.error("Error fetching tasks:", err);
-              return { data: { tasks: [] } }; // Provide fallback
+              return { data: { tasks: [] } };
             })
           ]);
 
@@ -67,7 +87,7 @@ export default function Chat() {
 
           // Process tasks if successful
           if (taskResponse?.data?.tasks) {
-            console.log("Loaded tasks from server:", taskResponse.data.tasks);
+            console.log("Initial tasks load:", taskResponse.data.tasks);
             setTasks(taskResponse.data.tasks);
           }
         } catch (error) {
@@ -79,22 +99,9 @@ export default function Chat() {
     fetchInitialData();
     setIsMounted(true);
     
-    // Set up an interval to refresh tasks periodically to ensure consistency
-    const taskRefreshInterval = setInterval(async () => {
-      if (status === "authenticated") {
-        try {
-          const response = await axios.get("/api/tasks");
-          if (response?.data?.tasks) {
-            setTasks(response.data.tasks);
-            setTaskRefreshKey(prev => prev + 1); // Force refresh of task list
-          }
-        } catch (err) {
-          console.error("Error in task refresh interval:", err);
-        }
-      }
-    }, 10000); // Refresh every 10 seconds instead of 30
+    // Set up an interval to refresh tasks
+    const taskRefreshInterval = setInterval(fetchTasks, 5000); // Refresh every 5 seconds
     
-    // Clean up interval on unmount
     return () => clearInterval(taskRefreshInterval);
   }, [status]);
 
@@ -197,10 +204,12 @@ export default function Chat() {
 
         // 8) If the LLM returned tasks, create them immediately on the server
         if (response.data.tasks?.length > 0) {
-          console.log("LLM returned tasks:", response.data.tasks);
+          console.log("LLM returned tasks to create:", response.data.tasks);
           
           try {
-            // Create tasks one by one to ensure proper ordering
+            const createdTasks = [];
+            
+            // Create tasks sequentially
             for (const task of response.data.tasks) {
               try {
                 const taskData = {
@@ -211,35 +220,41 @@ export default function Chat() {
                   priority: convertPriority(task.priority)
                 };
                 
-                console.log("Creating task on server:", taskData);
+                console.log("Sending task creation request:", taskData);
                 
-                const response = await axios.post("/api/tasks", taskData);
-                const savedTask = response.data.task;
+                const taskResponse = await axios.post("/api/tasks", taskData);
+                console.log("Task creation response:", taskResponse.data);
                 
-                // Update tasks list with the new task
-                setTasks(prev => [...prev, savedTask]);
-                
-              } catch (createErr) {
-                console.error("Error creating individual task:", createErr);
+                if (taskResponse.data.task) {
+                  createdTasks.push(taskResponse.data.task);
+                  console.log("Added task to created list:", taskResponse.data.task);
+                }
+              } catch (err) {
+                console.error("Error creating individual task:", err.response?.data || err.message);
               }
             }
             
-            // Refresh task list from server to ensure consistency
-            try {
-              const refreshResponse = await axios.get("/api/tasks");
-              if (refreshResponse?.data?.tasks) {
-                setTasks(refreshResponse.data.tasks);
-                setTaskRefreshKey(prev => prev + 1); // Force refresh
-              }
-            } catch (refreshErr) {
-              console.error("Error refreshing tasks after creation:", refreshErr);
+            if (createdTasks.length > 0) {
+              console.log("All created tasks:", createdTasks);
+              
+              // Update local state with new tasks
+              setTasks(prev => {
+                const newTasks = [...prev, ...createdTasks];
+                console.log("Updated tasks state:", newTasks);
+                return newTasks;
+              });
+              
+              // Fetch fresh task list from server
+              console.log("Fetching updated task list...");
+              const updatedTasks = await fetchTasks();
+              console.log("Fetched updated tasks:", updatedTasks);
             }
             
           } catch (error) {
-            console.error("Error processing tasks:", error);
+            console.error("Error in task creation process:", error.response?.data || error.message);
           }
         } else {
-          console.log("No tasks in LLM response");
+          console.log("No tasks in LLM response to create");
         }
       }
     } catch (error) {
