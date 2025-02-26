@@ -33,26 +33,21 @@ export default function Chat() {
 
   // Task state
   const [tasks, setTasks] = useState([]);
-  const [taskRefreshKey, setTaskRefreshKey] = useState(0);
 
-  // Function to fetch tasks
+  // Function to fetch tasks - will only be used for initial load
   const fetchTasks = async () => {
     if (status === "authenticated") {
       try {
-        console.log("Fetching tasks...");
+        console.log("Fetching initial tasks...");
         const response = await axios.get("/api/tasks");
-        console.log("Tasks API Response:", response.data);
-        
         if (response?.data?.tasks) {
-          console.log("Setting tasks in state:", response.data.tasks);
+          console.log("Setting initial tasks in state:", response.data.tasks);
           setTasks(response.data.tasks);
-          return response.data.tasks;
         }
       } catch (err) {
         console.error("Error fetching tasks:", err.response?.data || err.message);
       }
     }
-    return [];
   };
 
   // Fetch chat history and tasks on mount (if authenticated)
@@ -98,11 +93,6 @@ export default function Chat() {
 
     fetchInitialData();
     setIsMounted(true);
-    
-    // Set up an interval to refresh tasks
-    const taskRefreshInterval = setInterval(fetchTasks, 5000); // Refresh every 5 seconds
-    
-    return () => clearInterval(taskRefreshInterval);
   }, [status]);
 
   // Scroll to bottom whenever chat history updates
@@ -220,14 +210,12 @@ export default function Chat() {
                   priority: convertPriority(task.priority)
                 };
                 
-                console.log("Sending task creation request:", taskData);
+                console.log("Creating task:", taskData);
                 
                 const taskResponse = await axios.post("/api/tasks", taskData);
-                console.log("Task creation response:", taskResponse.data);
-                
                 if (taskResponse.data.task) {
                   createdTasks.push(taskResponse.data.task);
-                  console.log("Added task to created list:", taskResponse.data.task);
+                  console.log("Task created successfully:", taskResponse.data.task);
                 }
               } catch (err) {
                 console.error("Error creating individual task:", err.response?.data || err.message);
@@ -235,19 +223,12 @@ export default function Chat() {
             }
             
             if (createdTasks.length > 0) {
-              console.log("All created tasks:", createdTasks);
-              
               // Update local state with new tasks
               setTasks(prev => {
                 const newTasks = [...prev, ...createdTasks];
-                console.log("Updated tasks state:", newTasks);
+                console.log("Updated tasks state with new tasks:", newTasks);
                 return newTasks;
               });
-              
-              // Fetch fresh task list from server
-              console.log("Fetching updated task list...");
-              const updatedTasks = await fetchTasks();
-              console.log("Fetched updated tasks:", updatedTasks);
             }
             
           } catch (error) {
