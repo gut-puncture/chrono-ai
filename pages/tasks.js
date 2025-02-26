@@ -92,6 +92,8 @@ export default function TaskTable() {
                     <TextField
                       value={editedTask.title}
                       onChange={(e) => handleChange("title", e.target.value)}
+                      fullWidth
+                      sx={{ minWidth: '150px' }}
                     />
                   ): (
                     task.title
@@ -102,6 +104,9 @@ export default function TaskTable() {
                     <TextField
                       value={editedTask.description || ""}
                       onChange={(e) => handleChange("description", e.target.value)}
+                      fullWidth
+                      multiline
+                      sx={{ minWidth: '200px' }}
                     />
                   ): (
                     task.description

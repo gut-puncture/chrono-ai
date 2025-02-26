@@ -249,27 +249,29 @@ export default function Chat() {
   // Directly update a task field and save to server
   const handleUpdateTaskField = async (taskId, field, value) => {
     try {
-      // First update in local state immediately for responsive UI
-      setTasks(prevTasks => 
-        prevTasks.map(task => 
-          task.id === taskId ? { ...task, [field]: value } : task
-        )
-      );
-      
-      // Prepare data for API call
+      // Get task from current state before updating
       const taskToUpdate = tasks.find(t => t.id === taskId);
       if (!taskToUpdate) {
         console.error("Task not found in state:", taskId);
         return;
       }
       
+      // Create updated task with new field value
+      const updatedTask = { ...taskToUpdate, [field]: value };
+      
+      // Update local state first for responsive UI
+      setTasks(prevTasks => 
+        prevTasks.map(task => 
+          task.id === taskId ? updatedTask : task
+        )
+      );
+      
       const updatedData = {
-        title: taskToUpdate.title || "New Task",
-        description: taskToUpdate.description || "",
-        dueDate: taskToUpdate.dueDate,
-        status: taskToUpdate.status || "YET_TO_BEGIN",
-        priority: taskToUpdate.priority || 2,
-        [field]: value // Override the specific field
+        title: updatedTask.title || "New Task",
+        description: updatedTask.description || "",
+        dueDate: updatedTask.dueDate,
+        status: updatedTask.status || "YET_TO_BEGIN",
+        priority: updatedTask.priority || 2
       };
       
       console.log(`Updating task field ${field} for task ${taskId}:`, updatedData);
@@ -495,11 +497,11 @@ export default function Chat() {
                   }}>
                     <TableHead>
                       <TableRow>
-                        <TableCell width="35%">Title</TableCell>
-                        <TableCell width="40%">Description</TableCell>
-                        <TableCell width="15%">Due Date</TableCell>
-                        <TableCell width="15%">Status</TableCell>
-                        <TableCell width="15%">Priority</TableCell>
+                        <TableCell width="30%">Title</TableCell>
+                        <TableCell width="35%">Description</TableCell>
+                        <TableCell width="10%">Due Date</TableCell>
+                        <TableCell width="10%">Status</TableCell>
+                        <TableCell width="10%">Priority</TableCell>
                         <TableCell width="5%"></TableCell>
                       </TableRow>
                     </TableHead>
@@ -556,8 +558,11 @@ export default function Chat() {
                                 style: { fontSize: '0.95rem', fontWeight: 500 }
                               }}
                               sx={{ 
+                                width: '100%',
                                 '& .MuiInputBase-root': {
                                   padding: 0,
+                                  width: '100%',
+                                  minWidth: '150px',
                                   '&:hover': {
                                     backgroundColor: 'rgba(0, 0, 0, 0.03)'
                                   }
@@ -581,8 +586,11 @@ export default function Chat() {
                                 style: { fontSize: '0.9rem' }
                               }}
                               sx={{ 
+                                width: '100%',
                                 '& .MuiInputBase-root': {
                                   padding: 0,
+                                  width: '100%',
+                                  minWidth: '200px',
                                   '&:hover': {
                                     backgroundColor: 'rgba(0, 0, 0, 0.03)'
                                   }
