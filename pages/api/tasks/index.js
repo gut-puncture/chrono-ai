@@ -1,13 +1,14 @@
 // pages/api/tasks/index.js
 import prisma from "../../../lib/prisma";
-import { getSession } from "next-auth/react";
+import { getServerSession } from "next-auth/next";
+import { authOptions } from "../auth/authOptions";
 
 export default async function handler(req, res) {
   console.log("Tasks API called with method:", req.method);
   
-  const session = await getSession({ req });
+  const session = await getServerSession(req, res, authOptions);
   if (!session) {
-    console.log("No session found");
+    console.log("No session found in server");
     return res.status(401).json({ error: "Unauthorized" });
   }
 
