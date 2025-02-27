@@ -6,7 +6,8 @@
     "dev": "next dev",
     "build": "prisma db push && prisma generate && next build",
     "start": "next start",
-    "migrate": "knex migrate:latest --env production"
+    "migrate": "knex migrate:latest --env production",
+    "generate-cron-secret": "node scripts/generate-cron-secret.js"
   },
   "dependencies": {
     "@emotion/react": "^11.11.0",
@@ -26,6 +27,8 @@
     "swr": "^2.0.0"
   },
   "devDependencies": {
-    "prisma": "^6.4.1"
+    "prisma": "^6.4.1",
+    "@types/node": "^18.0.0",
+    "@types/react": "^18.0.0"
   }
 }

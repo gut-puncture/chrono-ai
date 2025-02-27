@@ -88,29 +88,55 @@ model Task {
   user            User      @relation(fields: [userId], references: [id])
 }
 
+model EmailThread {
+  id          String   @id @default(cuid())
+  threadId    String   @unique
+  userId      Int
+  subject     String?
+  lastEmailAt DateTime
+  emails      Email[]
+  user        User     @relation(fields: [userId], references: [id])
+
+  @@index([userId])
+}
+
 model Email {
-  id         Int      @id @default(autoincrement())
-  userId     Int
-  gmailId    String   @unique
-  subject    String
-  body       String
-  receivedAt DateTime
-  tags       Json?
-  user       User     @relation(fields: [userId], references: [id])
+  id          String      @id @default(cuid())
+  messageId   String      @unique
+  userId      Int
+  threadId    String
+  snippet     String?
+  subject     String?
+  from        String?
+  to          String?
+  date        DateTime
+  labels      String[]
+  thread      EmailThread @relation(fields: [threadId], references: [threadId])
+  user        User        @relation(fields: [userId], references: [id])
+
+  @@index([userId])
+  @@index([threadId])
 }
 
 model CalendarEvent {
-  id             Int      @id @default(autoincrement())
-  userId         Int
-  eventId        String   @unique
-  title          String
-  description    String?
-  startTime      DateTime
-  endTime        DateTime
-  recurring      Boolean
-  recurrenceInfo Json?
-  tags           Json?
-  user           User     @relation(fields: [userId], references: [id])
+  id              String   @id @default(cuid())
+  eventId         String   @unique
+  userId          String
+  title           String?
+  description     String?
+  location        String?
+  startTime       DateTime
+  endTime         DateTime
+  isRecurring     Boolean  @default(false)
+  recurringEventId String?
+  meetLink        String?
+  attendees       String?  // JSON string of attendees
+  status          String?
+  createdAt       DateTime
+  updatedAt       DateTime
+  user            User     @relation(fields: [userId], references: [id])
+
+  @@index([userId])
 }
 
 enum DocType {
