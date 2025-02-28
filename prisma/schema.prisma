@@ -59,11 +59,11 @@ model VerificationToken {
 model ChatMessage {
   id          Int      @id @default(autoincrement())
   userId      Int
-  role        String    // <--- NEW: store "user" or "llm"
+  role        String    // store "user" or "llm"
   messageText String
   llmResponse String?
-  createdAt   DateTime @default(now())
-  scopeId     String?  // can be a UUID string if needed
+  createdAt   DateTime  @default(now())
+  scopeId     String?
   tags        Json?
   user        User     @relation(fields: [userId], references: [id])
 }
@@ -119,22 +119,22 @@ model Email {
 }
 
 model CalendarEvent {
-  id              String   @id @default(cuid())
-  eventId         String   @unique
-  userId          String
-  title           String?
-  description     String?
-  location        String?
-  startTime       DateTime
-  endTime         DateTime
-  isRecurring     Boolean  @default(false)
+  id               String   @id @default(cuid())
+  eventId          String   @unique
+  userId           Int      // changed from String to Int
+  title            String?
+  description      String?
+  location         String?
+  startTime        DateTime
+  endTime          DateTime
+  isRecurring      Boolean  @default(false)
   recurringEventId String?
-  meetLink        String?
-  attendees       String?  // JSON string of attendees
-  status          String?
-  createdAt       DateTime
-  updatedAt       DateTime
-  user            User     @relation(fields: [userId], references: [id])
+  meetLink         String?
+  attendees        String?  // JSON string of attendees
+  status           String?
+  createdAt        DateTime
+  updatedAt        DateTime
+  user             User     @relation(fields: [userId], references: [id])
 
   @@index([userId])
 }
