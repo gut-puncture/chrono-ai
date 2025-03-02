@@ -11,7 +11,9 @@ export const authOptions = {
       clientSecret: process.env.GOOGLE_CLIENT_SECRET,
       authorization: {
         params: {
-          scope: "openid email profile https://www.googleapis.com/auth/gmail.readonly https://www.googleapis.com/auth/calendar.readonly"
+          scope: "openid email profile https://www.googleapis.com/auth/gmail.readonly https://www.googleapis.com/auth/calendar.readonly",
+          access_type: "offline",
+          prompt: "consent"
         }
       }
     })
@@ -25,7 +27,16 @@ export const authOptions = {
     async jwt({ token, account }) {
       if (account) {
         token.accessToken = account.access_token;
+        token.refreshToken = account.refresh_token;
+        token.accessTokenExpires = account.expires_at;
       }
+      
+      // If the token has expired, try to refresh it
+      if (token.accessTokenExpires && Date.now() > token.accessTokenExpires * 1000) {
+        // Token has expired - it will be refreshed by our custom logic
+        // We don't refresh here to avoid circular dependencies
+      }
+      
       return token;
     },
     async session({ session, token }) {

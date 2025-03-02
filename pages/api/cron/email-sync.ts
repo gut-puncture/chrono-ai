@@ -39,9 +39,18 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
       const succeeded = results.filter(r => r.status === 'fulfilled').length;
       const failed = results.filter(r => r.status === 'rejected').length;
+      
+      // Count total new emails
+      const totalNewEmails = results
+        .filter(r => r.status === 'fulfilled')
+        .reduce((sum, r) => {
+          const result = (r as PromiseFulfilledResult<any>).value;
+          return sum + (result && typeof result === 'object' && 'newEmails' in result ? result.newEmails : 0);
+        }, 0);
 
       return res.status(200).json({ 
-        message: `Synced emails for ${succeeded} users, ${failed} failed` 
+        message: `Synced emails for ${succeeded} users, ${failed} failed`,
+        newEmails: totalNewEmails
       });
     } 
     // For client requests, only sync the current user's emails
@@ -74,7 +83,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         return res.status(200).json({ 
           message: 'Email sync completed successfully',
           timestamp: Date.now(),
-          newEmails: typeof result === 'object' && result.newEmails ? result.newEmails : 0
+          newEmails: result && typeof result === 'object' && 'newEmails' in result ? result.newEmails : 0
         });
       } catch (syncError) {
         console.error('Error syncing emails for user:', syncError);
