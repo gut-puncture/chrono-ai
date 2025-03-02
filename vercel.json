@@ -1,7 +1,6 @@
 {
   "crons": [{
     "path": "/api/cron/email-sync",
-    "schedule": "0 0 * * *",
-    "description": "Daily backup email sync. Primary syncing happens via client-side polling."
+    "schedule": "0 0 * * *"
   }]
 }
