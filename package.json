@@ -4,10 +4,12 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
-    "build": "prisma db push && prisma generate && next build",
+    "build": "npx prisma db push --accept-data-loss && prisma generate && next build",
     "start": "next start",
     "migrate": "knex migrate:latest --env production",
-    "generate-cron-secret": "node scripts/generate-cron-secret.js"
+    "generate-cron-secret": "node scripts/generate-cron-secret.js",
+    "find-duplicates": "node scripts/find-duplicate-message-ids.js",
+    "clean-duplicates": "node scripts/clean-duplicate-message-ids.js"
   },
   "dependencies": {
     "@emotion/react": "^11.11.0",
