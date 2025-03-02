@@ -33,6 +33,7 @@ export default function Chat() {
 
   // Task state
   const [tasks, setTasks] = useState([]);
+  const [lastUpdateTimestamp, setLastUpdateTimestamp] = useState(null);
 
   // Function to fetch tasks - will only be used for initial load
   const fetchTasks = async () => {
@@ -43,6 +44,10 @@ export default function Chat() {
         if (response?.data?.tasks) {
           console.log("Setting initial tasks in state:", response.data.tasks);
           setTasks(response.data.tasks);
+          // Set initial timestamp
+          if (response.data.timestamp) {
+            setLastUpdateTimestamp(response.data.timestamp);
+          }
         }
       } catch (err) {
         console.error("Error fetching tasks:", err.response?.data || err.message);
@@ -432,6 +437,58 @@ export default function Chat() {
     2: "Medium",
     3: "High"
   };
+
+  // Add this useEffect for polling
+  useEffect(() => {
+    let pollInterval;
+    
+    const pollForUpdates = async () => {
+      if (status === "authenticated") {
+        try {
+          const headers = lastUpdateTimestamp ? {
+            'last-update': lastUpdateTimestamp.toString()
+          } : {};
+          
+          const response = await axios.get("/api/tasks", { headers });
+          
+          if (response?.data?.tasks?.length > 0) {
+            // Merge new/updated tasks with existing tasks
+            setTasks(prevTasks => {
+              const updatedTasks = [...prevTasks];
+              response.data.tasks.forEach(newTask => {
+                const index = updatedTasks.findIndex(t => t.id === newTask.id);
+                if (index !== -1) {
+                  updatedTasks[index] = newTask;
+                } else {
+                  updatedTasks.push(newTask);
+                }
+              });
+              return updatedTasks;
+            });
+          }
+          
+          // Update the timestamp
+          if (response?.data?.timestamp) {
+            setLastUpdateTimestamp(response.data.timestamp);
+          }
+        } catch (error) {
+          console.error("Error polling for updates:", error);
+        }
+      }
+    };
+
+    // Poll every 30 seconds
+    pollInterval = setInterval(pollForUpdates, 30000);
+
+    // Initial poll
+    pollForUpdates();
+
+    return () => {
+      if (pollInterval) {
+        clearInterval(pollInterval);
+      }
+    };
+  }, [status]); // Only re-run if authentication status changes
 
   // Handle loading or unauthenticated states
   if (status === "loading") {

@@ -25,11 +25,20 @@ export default async function handler(req, res) {
     try {
       console.log("Fetching tasks for user ID:", user.id);
       
-      // Fetch all tasks for the user
+      // Get the last update timestamp from the request header
+      const lastUpdate = req.headers['last-update'];
+      let whereClause = { userId: user.id };
+      
+      // If lastUpdate is provided, only fetch tasks updated after that timestamp
+      if (lastUpdate) {
+        whereClause.updatedAt = {
+          gt: new Date(parseInt(lastUpdate))
+        };
+      }
+      
+      // Fetch tasks with the where clause
       const tasks = await prisma.task.findMany({
-        where: { 
-          userId: user.id
-        },
+        where: whereClause,
         orderBy: [
           { status: 'asc' },
           { priority: 'desc' },
@@ -37,10 +46,14 @@ export default async function handler(req, res) {
         ]
       });
       
-      console.log(`Found ${tasks.length} tasks for user`);
-      console.log('Tasks:', tasks);
+      // Get the current server timestamp
+      const serverTimestamp = Date.now();
       
-      return res.status(200).json({ tasks });
+      console.log(`Found ${tasks.length} tasks for user`);
+      return res.status(200).json({ 
+        tasks,
+        timestamp: serverTimestamp
+      });
     } catch (error) {
       console.error('Error fetching tasks:', error);
       return res.status(500).json({ error: 'Failed to fetch tasks', details: error.message });
@@ -66,7 +79,8 @@ export default async function handler(req, res) {
           dueDate: dueDate ? new Date(dueDate) : null,
           status: status || "YET_TO_BEGIN",
           priority: priority || 2,
-          createdAt: new Date()
+          createdAt: new Date(),
+          updatedAt: new Date()
         }
       });
       
