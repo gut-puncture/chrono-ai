@@ -5,6 +5,7 @@ import prisma from "../../../lib/prisma";
 
 export const authOptions = {
   adapter: PrismaAdapter(prisma),
+  debug: process.env.NODE_ENV === 'development',
   providers: [
     GoogleProvider({
       clientId: process.env.GOOGLE_CLIENT_ID,
@@ -13,7 +14,8 @@ export const authOptions = {
         params: {
           scope: "openid email profile https://www.googleapis.com/auth/gmail.readonly https://www.googleapis.com/auth/calendar.readonly",
           access_type: "offline",
-          prompt: "consent"
+          prompt: "consent",
+          response_type: "code"
         }
       }
     })
@@ -24,25 +26,78 @@ export const authOptions = {
     maxAge: 30 * 24 * 60 * 60, // 30 days
   },
   callbacks: {
-    async jwt({ token, account }) {
-      if (account) {
-        token.accessToken = account.access_token;
-        token.refreshToken = account.refresh_token;
-        token.accessTokenExpires = account.expires_at;
+    async jwt({ token, account, user }) {
+      // Initial sign in
+      if (account && user) {
+        console.log("JWT callback - initial sign in");
+        console.log("Account provider:", account.provider);
+        console.log("Has access token:", !!account.access_token);
+        console.log("Has refresh token:", !!account.refresh_token);
+        console.log("Has token expiry:", !!account.expires_at);
+        
+        return {
+          ...token,
+          accessToken: account.access_token,
+          refreshToken: account.refresh_token,
+          accessTokenExpires: account.expires_at ? account.expires_at * 1000 : null,
+          user: {
+            id: user.id,
+            email: user.email,
+            name: user.name,
+            image: user.image,
+          }
+        };
       }
       
-      // If the token has expired, try to refresh it
-      if (token.accessTokenExpires && Date.now() > token.accessTokenExpires * 1000) {
-        // Token has expired - it will be refreshed by our custom logic
-        // We don't refresh here to avoid circular dependencies
+      // Return previous token if the access token has not expired yet
+      if (token.accessTokenExpires && Date.now() < token.accessTokenExpires) {
+        console.log("JWT callback - using existing token");
+        return token;
       }
       
+      // Access token has expired, try to update it
+      console.log("JWT callback - token expired, needs refresh");
       return token;
     },
     async session({ session, token }) {
-      session.accessToken = token.accessToken;
+      if (token) {
+        session.accessToken = token.accessToken;
+        session.user.id = token.user?.id;
+      }
       return session;
     },
+  },
+  events: {
+    async signIn({ user, account }) {
+      console.log(`User signed in: ${user.email}`);
+      console.log(`Account provider: ${account.provider}`);
+      console.log(`Has access token: ${!!account.access_token}`);
+      console.log(`Has refresh token: ${!!account.refresh_token}`);
+      console.log(`Token expires at: ${account.expires_at ? new Date(account.expires_at * 1000).toISOString() : 'unknown'}`);
+      
+      // Ensure we store the token expiry time
+      if (account.expires_in && !account.expires_at) {
+        const expiresAt = Math.floor(Date.now() / 1000) + parseInt(account.expires_in);
+        console.log(`Calculated token expiry: ${new Date(expiresAt * 1000).toISOString()}`);
+        
+        try {
+          await prisma.account.update({
+            where: {
+              provider_providerAccountId: {
+                provider: account.provider,
+                providerAccountId: account.providerAccountId
+              }
+            },
+            data: {
+              expires_at: expiresAt
+            }
+          });
+          console.log("Updated account with token expiry time");
+        } catch (error) {
+          console.error("Error updating account with token expiry:", error);
+        }
+      }
+    }
   },
   cookies: {
     sessionToken: {

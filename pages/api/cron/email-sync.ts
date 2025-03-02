@@ -4,21 +4,28 @@ import { syncEmails } from '../../../lib/emailWorker';
 import { getSession } from 'next-auth/react';
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
+  console.log('Email sync API called');
+  
   // Check if this is a cron job request or a client request
   const isCronRequest = req.headers.authorization === `Bearer ${process.env.CRON_SECRET}`;
+  console.log(`Request type: ${isCronRequest ? 'cron' : 'client'}`);
   
   // For client requests, verify the user is authenticated
   let session;
   if (!isCronRequest) {
     session = await getSession({ req });
     if (!session) {
+      console.log('Unauthorized client request - no session');
       return res.status(401).json({ error: 'Unauthorized' });
     }
+    console.log(`Authenticated user: ${session.user.email}`);
   }
 
   try {
     // For cron job, sync all users
     if (isCronRequest) {
+      console.log('Processing cron job request');
+      
       // Get all users with valid Google accounts
       const users = await prisma.account.findMany({
         where: {
@@ -30,7 +37,17 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         }
       });
 
+      console.log(`Found ${users.length} Google accounts to sync`);
+      
+      if (users.length === 0) {
+        return res.status(200).json({ 
+          message: 'No users to sync',
+          newEmails: 0
+        });
+      }
+
       // Sync emails for each user
+      console.log('Starting batch email sync');
       const results = await Promise.allSettled(
         users.map(account => 
           syncEmails(account.access_token!, account.user.id)
@@ -48,6 +65,16 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
           return sum + (result && typeof result === 'object' && 'newEmails' in result ? result.newEmails : 0);
         }, 0);
 
+      // Log any failures
+      results
+        .filter(r => r.status === 'rejected')
+        .forEach((r, i) => {
+          const error = (r as PromiseRejectedResult).reason;
+          console.error(`Error syncing emails for user ${i}:`, error);
+        });
+
+      console.log(`Batch sync complete: ${succeeded} succeeded, ${failed} failed, ${totalNewEmails} new emails`);
+      
       return res.status(200).json({ 
         message: `Synced emails for ${succeeded} users, ${failed} failed`,
         newEmails: totalNewEmails
@@ -55,14 +82,21 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     } 
     // For client requests, only sync the current user's emails
     else {
-      const userEmail = session.user.email;
+      console.log('Processing client request');
+      
+      const userEmail = session!.user.email;
+      console.log(`Looking up user with email: ${userEmail}`);
+      
       const user = await prisma.user.findUnique({ 
         where: { email: userEmail } 
       });
       
       if (!user) {
+        console.log('User not found in database');
         return res.status(404).json({ error: 'User not found' });
       }
+
+      console.log(`Found user with ID: ${user.id}`);
 
       // Get the user's Google account
       const account = await prisma.account.findFirst({
@@ -74,12 +108,20 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       });
 
       if (!account) {
+        console.log('Google account not found or not connected');
         return res.status(404).json({ error: 'Google account not found or not connected' });
       }
 
+      console.log(`Found Google account for user, access token exists: ${!!account.access_token}`);
+      console.log(`Access token starts with: ${account.access_token?.substring(0, 5)}...`);
+      console.log(`Refresh token exists: ${!!account.refresh_token}`);
+
       // Sync just this user's emails
       try {
+        console.log('Starting email sync for user');
         const result = await syncEmails(account.access_token, user.id);
+        console.log('Email sync completed successfully');
+        
         return res.status(200).json({ 
           message: 'Email sync completed successfully',
           timestamp: Date.now(),
