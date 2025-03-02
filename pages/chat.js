@@ -35,6 +35,9 @@ export default function Chat() {
   const [tasks, setTasks] = useState([]);
   const [lastUpdateTimestamp, setLastUpdateTimestamp] = useState(null);
 
+  // Email state
+  const [lastEmailSyncTimestamp, setLastEmailSyncTimestamp] = useState(null);
+
   // Function to fetch tasks - will only be used for initial load
   const fetchTasks = async () => {
     if (status === "authenticated") {
@@ -489,6 +492,46 @@ export default function Chat() {
       }
     };
   }, [status, lastUpdateTimestamp]); // Add lastUpdateTimestamp to dependency array for proper reactivity
+
+  // Add this useEffect for email polling (separate from the task polling)
+  useEffect(() => {
+    let emailPollInterval;
+    
+    const pollForEmails = async () => {
+      if (status === "authenticated") {
+        try {
+          console.log("Polling for new emails...");
+          const response = await axios.get("/api/cron/email-sync");
+          
+          if (response?.data?.timestamp) {
+            setLastEmailSyncTimestamp(response.data.timestamp);
+          }
+          
+          if (response?.data?.newEmails > 0) {
+            console.log(`Synced ${response.data.newEmails} new emails`);
+            // After syncing emails, refresh tasks as there might be new tasks
+            fetchTasks();
+          }
+        } catch (error) {
+          console.error("Error polling for emails:", error.response?.data || error.message);
+        }
+      }
+    };
+
+    // Poll every 5 minutes for new emails
+    // This is a good balance between getting timely updates and not overloading the server
+    emailPollInterval = setInterval(pollForEmails, 300000);
+
+    // Initial poll after a short delay (to not conflict with initial tasks load)
+    const initialPollTimeout = setTimeout(pollForEmails, 5000);
+
+    return () => {
+      if (emailPollInterval) {
+        clearInterval(emailPollInterval);
+      }
+      clearTimeout(initialPollTimeout);
+    };
+  }, [status]); // Only re-run if authentication status changes
 
   // Handle loading or unauthenticated states
   if (status === "loading") {
