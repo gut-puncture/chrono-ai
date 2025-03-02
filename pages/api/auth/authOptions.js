@@ -15,7 +15,8 @@ export const authOptions = {
           scope: "openid email profile https://www.googleapis.com/auth/gmail.readonly https://www.googleapis.com/auth/calendar.readonly",
           access_type: "offline",
           prompt: "consent",
-          response_type: "code"
+          response_type: "code",
+          include_granted_scopes: true
         }
       }
     })
@@ -34,6 +35,28 @@ export const authOptions = {
         console.log("Has access token:", !!account.access_token);
         console.log("Has refresh token:", !!account.refresh_token);
         console.log("Has token expiry:", !!account.expires_at);
+        
+        // If we don't have a refresh token, mark the token as expired to force re-auth
+        if (!account.refresh_token) {
+          console.log("No refresh token found, marking token as expired");
+          
+          // Try to update the account to force re-auth on next login
+          try {
+            await prisma.account.update({
+              where: {
+                provider_providerAccountId: {
+                  provider: account.provider,
+                  providerAccountId: account.providerAccountId
+                }
+              },
+              data: {
+                expires_at: Math.floor(Date.now() / 1000) - 3600 // Set to 1 hour ago
+              }
+            });
+          } catch (error) {
+            console.error("Error updating account expiry:", error);
+          }
+        }
         
         return {
           ...token,
@@ -57,12 +80,30 @@ export const authOptions = {
       
       // Access token has expired, try to update it
       console.log("JWT callback - token expired, needs refresh");
+      
+      // If we don't have a refresh token, we can't refresh the access token
+      if (!token.refreshToken) {
+        console.log("No refresh token available, user needs to re-authenticate");
+        // Clear the token to force re-auth
+        return {
+          ...token,
+          accessToken: null,
+          accessTokenExpires: null
+        };
+      }
+      
       return token;
     },
     async session({ session, token }) {
       if (token) {
         session.accessToken = token.accessToken;
         session.user.id = token.user?.id;
+        
+        // Add a flag to indicate if the token is valid
+        session.tokenValid = !!token.accessToken;
+        
+        // Add a flag to indicate if we have a refresh token
+        session.hasRefreshToken = !!token.refreshToken;
       }
       return session;
     },
@@ -96,6 +137,11 @@ export const authOptions = {
         } catch (error) {
           console.error("Error updating account with token expiry:", error);
         }
+      }
+      
+      // If we don't have a refresh token, log a warning
+      if (!account.refresh_token) {
+        console.warn("No refresh token received during sign in. User will need to re-authenticate when token expires.");
       }
     }
   },

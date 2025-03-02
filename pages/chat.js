@@ -20,9 +20,11 @@ import {
 import axios from "axios";
 import DeleteIcon from "@mui/icons-material/Delete";
 import SaveIcon from "@mui/icons-material/Save";
+import { useRouter } from "next/router";
 
 export default function Chat() {
   const { data: session, status } = useSession();
+  const router = useRouter();
 
   // Chat state
   const [input, setInput] = useState("");
@@ -40,21 +42,23 @@ export default function Chat() {
 
   // Function to fetch tasks - will only be used for initial load
   const fetchTasks = async () => {
-    if (status === "authenticated") {
-      try {
-        console.log("Fetching initial tasks...");
-        const response = await axios.get("/api/tasks");
-        if (response?.data?.tasks) {
-          console.log("Setting initial tasks in state:", response.data.tasks);
-          setTasks(response.data.tasks);
-          // Set initial timestamp
-          if (response.data.timestamp) {
-            setLastUpdateTimestamp(response.data.timestamp);
-          }
-        }
-      } catch (err) {
-        console.error("Error fetching tasks:", err.response?.data || err.message);
+    try {
+      setTasksLoading(true);
+      const response = await fetch('/api/tasks');
+      
+      if (response.status === 401) {
+        // User needs to re-authenticate
+        console.log('User needs to re-authenticate');
+        router.push('/?needsReauth=true');
+        return;
       }
+      
+      const data = await response.json();
+      setTasks(data.tasks || []);
+    } catch (error) {
+      console.error('Error fetching tasks:', error);
+    } finally {
+      setTasksLoading(false);
     }
   };
 
@@ -476,23 +480,32 @@ export default function Chat() {
     let emailPollInterval;
     
     const pollForEmails = async () => {
-      if (status === "authenticated") {
-        try {
-          console.log("Polling for new emails...");
-          const response = await axios.get("/api/cron/email-sync");
-          
-          if (response?.data?.timestamp) {
-            setLastEmailSyncTimestamp(response.data.timestamp);
+      try {
+        const response = await fetch('/api/cron/email-sync');
+        
+        if (response.status === 401) {
+          const data = await response.json();
+          if (data.needsReauth) {
+            console.log('User needs to re-authenticate for email access');
+            setEmailSyncError('Your Google account access has expired. Please re-authenticate to continue syncing emails.');
+            return;
           }
-          
-          if (response?.data?.newEmails > 0) {
-            console.log(`Synced ${response.data.newEmails} new emails`);
-            // After syncing emails, refresh tasks as there might be new tasks
-            fetchTasks();
-          }
-        } catch (error) {
-          console.error("Error polling for emails:", error.response?.data || error.message);
         }
+        
+        if (!response.ok) {
+          console.error('Error syncing emails:', await response.text());
+          return;
+        }
+        
+        const data = await response.json();
+        console.log('Email sync result:', data);
+        
+        if (data.newEmails > 0) {
+          console.log(`Synced ${data.newEmails} new emails`);
+          // Optionally refresh the UI or show a notification
+        }
+      } catch (error) {
+        console.error('Error polling for emails:', error);
       }
     };
 

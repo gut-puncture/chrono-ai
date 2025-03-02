@@ -116,6 +116,26 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       console.log(`Access token starts with: ${account.access_token?.substring(0, 5)}...`);
       console.log(`Refresh token exists: ${!!account.refresh_token}`);
 
+      // Check if we have a refresh token
+      if (!account.refresh_token) {
+        console.log('No refresh token found for user, marking token as expired');
+        
+        // Mark the token as expired to force re-auth on next login
+        try {
+          await prisma.account.update({
+            where: { id: account.id },
+            data: { expires_at: Math.floor(Date.now() / 1000) - 3600 } // Set to 1 hour ago
+          });
+          
+          return res.status(401).json({ 
+            error: 'No refresh token available. User needs to re-authenticate.',
+            needsReauth: true
+          });
+        } catch (dbError) {
+          console.error('Error updating token expiry:', dbError);
+        }
+      }
+
       // Sync just this user's emails
       try {
         console.log('Starting email sync for user');
