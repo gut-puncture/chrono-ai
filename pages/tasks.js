@@ -1,5 +1,5 @@
 // pages/tasks.js
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import useSWR from "swr";
 import axios from "axios";
 import { useSession } from "next-auth/react";
@@ -15,9 +15,37 @@ const statusOptions = ["YET_TO_BEGIN", "IN_PROGRESS", "DONE"];
 
 export default function TaskTable() {
   const { data: session } = useSession();
-  const { data, mutate } = useSWR(session? "/api/tasks": null, fetcher);
+  const { data, mutate } = useSWR(
+    session ? "/api/tasks" : null, 
+    fetcher, 
+    {
+      // Disable automatic polling
+      revalidateOnFocus: false,
+      revalidateOnReconnect: false,
+      refreshInterval: 0,
+      dedupingInterval: 10000,
+      // Custom error handling
+      onError: (error) => {
+        console.error("Error fetching tasks:", error);
+      }
+    }
+  );
   const [editTaskId, setEditTaskId] = useState(null);
   const [editedTask, setEditedTask] = useState({});
+  
+  // Implement manual refresh with reasonable interval
+  useEffect(() => {
+    // Only poll if the user is authenticated
+    if (!session) return;
+    
+    console.log("Setting up manual task polling");
+    const pollInterval = setInterval(() => {
+      console.log("Manual task poll - refreshing data");
+      mutate();
+    }, 60000); // Poll every minute
+    
+    return () => clearInterval(pollInterval);
+  }, [session, mutate]);
 
   // Start editing a task by storing its current values
   const handleEdit = (task) => {
@@ -25,7 +53,7 @@ export default function TaskTable() {
     setEditedTask({
       title: task.title,
       description: task.description,
-      dueDate: task.dueDate? new Date(task.dueDate).toISOString().split("T"): "",
+      dueDate: task.dueDate? new Date(task.dueDate).toISOString().split("T")[0]: "",
       status: task.status,
       priority: task.priority
     });
@@ -34,10 +62,20 @@ export default function TaskTable() {
   // Update task in the backend; note: dynamic reordering logic to adjust subsequent tasks
   const updateTask = async (taskId) => {
     try {
-      await axios.put(`/api/tasks/${taskId}`, editedTask);
+      // Get a fresh session token before attempting update
+      await axios.get('/api/auth/session');
+      
+      // Send the update with credentials
+      await axios.put(`/api/tasks/${taskId}`, editedTask, {
+        withCredentials: true,
+        headers: {
+          'Content-Type': 'application/json'
+        }
+      });
+      
       setEditTaskId(null);
-      mutate();
-      // TODO: Add dynamic reordering logic here to slide priorities accordingly.
+      mutate(); // Manually refresh data after update
+      console.log("Task updated successfully");
     } catch (error) {
       console.error("Error updating task:", error.response?.data || error.message);
     }
@@ -53,12 +91,22 @@ export default function TaskTable() {
         return;
       }
       
+      // Get a fresh session token before attempting update
+      await axios.get('/api/auth/session');
+      
       // Update the task status to DONE instead of deleting
       await axios.put(`/api/tasks/${taskId}`, {
         ...task,
         status: "DONE"
+      }, {
+        withCredentials: true,
+        headers: {
+          'Content-Type': 'application/json'
+        }
       });
+      
       mutate(); // Refresh the task list
+      console.log("Task marked as done");
     } catch (error) {
       console.error("Error marking task as done:", error.response?.data || error.message);
     }

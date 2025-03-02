@@ -269,82 +269,77 @@ export default function Chat() {
     try {
       console.log(`Updating task ${taskId}, field ${field} to value:`, value);
       
-      // Update task in local state first for responsive UI
+      // For UI responsiveness, update local state first
       setTasks(prevTasks => 
         prevTasks.map(task => 
           task.id === taskId 
-            ? { ...task, [field]: value, isEdited: true } 
+            ? { ...task, [field]: value } 
             : task
         )
       );
 
-      // If it's a temporary task that hasn't been saved to the database yet
+      // If it's a temporary task that hasn't been saved to DB yet
       if (typeof taskId === "string" && taskId.startsWith("temp-")) {
-        // This is handled separately - no change needed
+        // We don't need to update anything on the server yet
         return;
       }
 
-      // For existing tasks, prepare the update data
+      // For existing tasks, prepare the complete update data
       const taskToUpdate = tasks.find(t => t.id === taskId);
       if (!taskToUpdate) {
         console.error(`Task ${taskId} not found in local state`);
         return;
       }
       
-      // Clone and update the task data
-      const updatedData = { ...taskToUpdate, [field]: value };
+      // Create a complete update payload with all required fields
+      const updatedData = {
+        title: taskToUpdate.title,
+        description: taskToUpdate.description || "",
+        dueDate: taskToUpdate.dueDate,
+        status: taskToUpdate.status,
+        priority: taskToUpdate.priority,
+        ...{ [field]: value } // Override the specific field
+      };
       
-      // Make sure we include all required fields for the API
-      if (updatedData.title === undefined) updatedData.title = taskToUpdate.title || "Task";
-      if (updatedData.status === undefined) updatedData.status = taskToUpdate.status || "YET_TO_BEGIN";
-      if (updatedData.priority === undefined) updatedData.priority = taskToUpdate.priority || 2;
+      // Ensure we have all required fields with proper defaults
+      if (!updatedData.title) updatedData.title = "Task";
+      if (!updatedData.status) updatedData.status = "YET_TO_BEGIN";
+      if (updatedData.priority === undefined) updatedData.priority = 2;
       
-      console.log(`Updating existing task ${taskId} on server:`, updatedData);
+      console.log(`Sending update for task ${taskId} to server:`, updatedData);
       
-      // Make the API call with retry logic
-      let attempts = 0;
-      const maxAttempts = 3;
+      // Use retry logic to make the API call
+      let retryCount = 0;
+      const maxRetries = 3;
+      let success = false;
       
-      while (attempts < maxAttempts) {
+      while (retryCount < maxRetries && !success) {
         try {
-          attempts++;
-          const response = await axios.put(`/api/tasks/${taskId}`, updatedData);
-          console.log(`Task ${taskId} updated successfully:`, response.data);
+          // Get a fresh session token before each attempt
+          await axios.get('/api/auth/session');
           
-          // Fetch the updated task to confirm it was saved
-          try {
-            const checkResponse = await axios.get("/api/tasks", {
-              headers: { 'last-update': Date.now() - 10000 } // Get tasks updated in the last 10 seconds
-            });
-            
-            const updatedTaskFromServer = checkResponse.data.tasks.find(t => t.id === taskId);
-            if (updatedTaskFromServer) {
-              console.log(`Confirmed task ${taskId} was updated in database:`, updatedTaskFromServer);
-              
-              // Update the local state with the server data
-              setTasks(prevTasks => 
-                prevTasks.map(task => 
-                  task.id === taskId ? { ...updatedTaskFromServer, isEdited: false } : task
-                )
-              );
-            } else {
-              console.warn(`Task ${taskId} was not found in recent updates, may not be saved`);
+          // Include the withCredentials flag to ensure cookies are sent
+          const response = await axios.put(`/api/tasks/${taskId}`, updatedData, {
+            withCredentials: true,
+            headers: {
+              'Content-Type': 'application/json'
             }
-          } catch (verifyError) {
-            console.error(`Error verifying task ${taskId} update:`, verifyError);
-          }
+          });
           
-          // Success, exit the retry loop
-          break;
+          console.log(`Successfully updated task ${taskId} on server:`, response.data);
+          success = true;
+          
+          // After successful update, refresh all tasks from server
+          fetchTasks();
         } catch (error) {
-          console.error(`Attempt ${attempts} failed to update task ${taskId}:`, error);
+          retryCount++;
+          console.error(`Error updating task ${taskId} (attempt ${retryCount}/${maxRetries}):`, error);
           
-          if (attempts >= maxAttempts) {
-            console.error(`Failed to update task ${taskId} after ${maxAttempts} attempts`);
-            // Show a notification to the user if needed
-          } else {
-            // Wait before retrying
+          if (retryCount < maxRetries) {
+            console.log(`Retrying in 1 second...`);
             await new Promise(resolve => setTimeout(resolve, 1000));
+          } else {
+            console.error(`Failed to update task ${taskId} after ${maxRetries} attempts`);
           }
         }
       }

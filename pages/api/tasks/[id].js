@@ -1,6 +1,7 @@
 // pages/api/tasks/[id].js
 import prisma from "../../../lib/prisma";
-import { getSession } from "next-auth/react";
+import { getServerSession } from "next-auth/next";
+import { authOptions } from "../auth/authOptions";
 
 export default async function handler(req, res) {
   console.log("Task API [id] called with method:", req.method);
@@ -8,14 +9,18 @@ export default async function handler(req, res) {
   console.log("Task ID:", req.query.id);
 
   const { id } = req.query;
-  const session = await getSession({ req });
+  const session = await getServerSession(req, res, authOptions);
   if (!session) {
+    console.log("No session found in server for task API [id]");
     return res.status(401).json({ error: "Unauthorized" });
   }
   
   const userEmail = session.user.email;
+  console.log("Processing [id] request for user:", userEmail);
+  
   const user = await prisma.user.findUnique({ where: { email: userEmail } });
   if (!user) {
+    console.log("User not found in database:", userEmail);
     return res.status(404).json({ error: "User not found" });
   }
   
@@ -36,8 +41,14 @@ export default async function handler(req, res) {
       }
 
       const task = await prisma.task.findUnique({ where: { id: taskId } });
-      if (!task || task.userId !== user.id) {
+      if (!task) {
+        console.log(`Task ${taskId} not found`);
         return res.status(404).json({ error: "Task not found" });
+      }
+      
+      if (task.userId !== user.id) {
+        console.log(`Task ${taskId} does not belong to user ${user.id}`);
+        return res.status(403).json({ error: "Not authorized to modify this task" });
       }
       
       // Update the task with new values
@@ -67,8 +78,14 @@ export default async function handler(req, res) {
       }
       
       const task = await prisma.task.findUnique({ where: { id: taskId } });
-      if (!task || task.userId !== user.id) {
+      if (!task) {
+        console.log(`Task ${taskId} not found`);
         return res.status(404).json({ error: "Task not found" });
+      }
+      
+      if (task.userId !== user.id) {
+        console.log(`Task ${taskId} does not belong to user ${user.id}`);
+        return res.status(403).json({ error: "Not authorized to modify this task" });
       }
       
       await prisma.task.delete({ where: { id: taskId } });
