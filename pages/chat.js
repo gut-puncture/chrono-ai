@@ -267,102 +267,85 @@ export default function Chat() {
   // Directly update a task field and save to server
   const handleUpdateTaskField = async (taskId, field, value) => {
     try {
-      // Get task from current state before updating
+      console.log(`Updating task ${taskId}, field ${field} to value:`, value);
+      
+      // Update task in local state first for responsive UI
+      setTasks(prevTasks => 
+        prevTasks.map(task => 
+          task.id === taskId 
+            ? { ...task, [field]: value, isEdited: true } 
+            : task
+        )
+      );
+
+      // If it's a temporary task that hasn't been saved to the database yet
+      if (typeof taskId === "string" && taskId.startsWith("temp-")) {
+        // This is handled separately - no change needed
+        return;
+      }
+
+      // For existing tasks, prepare the update data
       const taskToUpdate = tasks.find(t => t.id === taskId);
       if (!taskToUpdate) {
-        console.error("Task not found in state:", taskId);
+        console.error(`Task ${taskId} not found in local state`);
         return;
       }
       
-      // Create updated task with new field value
-      const updatedTask = { ...taskToUpdate, [field]: value };
+      // Clone and update the task data
+      const updatedData = { ...taskToUpdate, [field]: value };
       
-      // Update local state first for responsive UI
-      setTasks(prevTasks => 
-        prevTasks.map(task => 
-          task.id === taskId ? updatedTask : task
-        )
-      );
+      // Make sure we include all required fields for the API
+      if (updatedData.title === undefined) updatedData.title = taskToUpdate.title || "Task";
+      if (updatedData.status === undefined) updatedData.status = taskToUpdate.status || "YET_TO_BEGIN";
+      if (updatedData.priority === undefined) updatedData.priority = taskToUpdate.priority || 2;
       
-      const updatedData = {
-        title: updatedTask.title || "New Task",
-        description: updatedTask.description || "",
-        dueDate: updatedTask.dueDate,
-        status: updatedTask.status || "YET_TO_BEGIN",
-        priority: updatedTask.priority || 2
-      };
+      console.log(`Updating existing task ${taskId} on server:`, updatedData);
       
-      console.log(`Updating task field ${field} for task ${taskId}:`, updatedData);
+      // Make the API call with retry logic
+      let attempts = 0;
+      const maxAttempts = 3;
       
-      // If it's a temporary task (from LLM), create it on server
-      if (typeof taskId === "string" && taskId.startsWith("temp-")) {
-        console.log("Creating temporary task on server:", updatedData);
+      while (attempts < maxAttempts) {
         try {
-          // Use a retry mechanism to ensure the task gets created
-          let retries = 3;
-          let savedTask = null;
+          attempts++;
+          const response = await axios.put(`/api/tasks/${taskId}`, updatedData);
+          console.log(`Task ${taskId} updated successfully:`, response.data);
           
-          while (retries > 0 && !savedTask) {
-            try {
-              const response = await axios.post("/api/tasks", {
-                ...updatedData,
-                dueDate: updatedData.dueDate || null,
-                sourceMessageId: null
-              });
-              
-              savedTask = response.data.task;
-              console.log("Task created on server:", savedTask);
-              
-              // Replace temp task with server task in local state
-              setTasks(prevTasks => 
-                prevTasks.map(task => 
-                  task.id === taskId ? savedTask : task
-                )
-              );
-              
-              break; // Success, exit the retry loop
-            } catch (createErr) {
-              retries--;
-              console.error(`Error creating task (retries left: ${retries}):`, createErr);
-              if (retries > 0) {
-                await new Promise(r => setTimeout(r, 1000)); // Wait 1 second before retry
-              }
-            }
-          }
-          
-          if (!savedTask) {
-            console.error("Failed to create task after multiple attempts");
-          }
-          
-        } catch (err) {
-          console.error("Error in task creation process:", err);
-        }
-      } else {
-        // Update existing task on server
-        console.log(`Updating existing task ${taskId} on server:`, updatedData);
-        try {
-          await axios.put(`/api/tasks/${taskId}`, updatedData);
-          
-          // Verify task was updated by re-fetching tasks
-          // This ensures we have the latest data from the server
+          // Fetch the updated task to confirm it was saved
           try {
-            const response = await axios.get("/api/tasks");
-            const serverTasks = response.data.tasks;
+            const checkResponse = await axios.get("/api/tasks", {
+              headers: { 'last-update': Date.now() - 10000 } // Get tasks updated in the last 10 seconds
+            });
             
-            // If our task exists on the server, update our local state to match
-            const serverTask = serverTasks.find(t => t.id === taskId);
-            if (serverTask) {
+            const updatedTaskFromServer = checkResponse.data.tasks.find(t => t.id === taskId);
+            if (updatedTaskFromServer) {
+              console.log(`Confirmed task ${taskId} was updated in database:`, updatedTaskFromServer);
+              
+              // Update the local state with the server data
               setTasks(prevTasks => 
                 prevTasks.map(task => 
-                  task.id === taskId ? serverTask : task
+                  task.id === taskId ? { ...updatedTaskFromServer, isEdited: false } : task
                 )
               );
+            } else {
+              console.warn(`Task ${taskId} was not found in recent updates, may not be saved`);
             }
-          } catch (fetchErr) {
-            console.error("Error verifying task update:", fetchErr);
+          } catch (verifyError) {
+            console.error(`Error verifying task ${taskId} update:`, verifyError);
           }
-        } catch (err) {
-          console.error(`Error updating task ${taskId}:`, err);
+          
+          // Success, exit the retry loop
+          break;
+        } catch (error) {
+          console.error(`Attempt ${attempts} failed to update task ${taskId}:`, error);
+          
+          if (attempts >= maxAttempts) {
+            console.error(`Failed to update task ${taskId} after ${maxAttempts} attempts`);
+            // Show a notification to the user if needed
+          } else {
+            // Wait before retrying
+            await new Promise(resolve => setTimeout(resolve, 1000));
+          }
         }
       }
     } catch (error) {

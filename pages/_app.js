@@ -29,7 +29,10 @@ export default function MyApp({ Component, pageProps: { session,...pageProps } }
       <ThemeProvider theme={theme}>
         <CssBaseline />
         <SWRConfig value={{
-          fetcher: (url) => fetch(url).then(r => r.json()) // Customize the fetcher as needed
+          fetcher: (url) => fetch(url).then(r => r.json()),
+          revalidateOnFocus: false, // Disable revalidation on window focus
+          revalidateOnReconnect: false, // Disable revalidation on network reconnect
+          refreshInterval: 0 // Disable automatic polling
         }}>
           <Component {...pageProps} />
         </SWRConfig>
