@@ -1,0 +1,1 @@
+DELETE FROM "Email" WHERE id IN (SELECT e.id FROM "Email" e INNER JOIN (SELECT messageId, MIN(date) as min_date FROM "Email" GROUP BY messageId HAVING COUNT(*) > 1) dups ON e.messageId = dups.messageId WHERE e.date > dups.min_date);

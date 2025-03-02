@@ -12,4 +12,4 @@ We purged out db just before this and the user had signed up earlier. this might
 This was solved.
 
 Current state:
-- when the status of a task is update on the UI, it is not updated in the heroku db. We tried to do this using a cron job that runs more than once per day, but since free vercel users cannot run cron jobs more than once a day, the deployment failed. We added server side polling to update the tasks but the same cron job error is still showing.
+- when the status of a task is update on the UI, it is not updated in the heroku db. We tried to do this using a cron job that runs more than once per day, but since free vercel users cannot run cron jobs more than once a day, the deployment failed. We added server side polling to update the tasks but the same cron job error is still showing. The error was showing due to us fetching emails from gmail every 15 minutes. we pushed that to client side but that resulted in a small error in deployment. We're getting a bunch of errors now trying to get the changes deployed.

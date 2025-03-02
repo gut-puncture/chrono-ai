@@ -10,12 +10,6 @@ module.exports = {
     // Allow production builds to complete even with ESLint errors
     ignoreDuringBuilds: true,
   },
-  experimental: {
-    // Reduce the build size by only including the required polyfills
-    optimizeCss: true,
-    // Reduce memory usage during builds
-    optimizeServerReact: true,
-  },
   // Add any environment variables your build needs here
   env: {
     DATABASE_URL: process.env.DATABASE_URL,
