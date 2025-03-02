@@ -4,7 +4,7 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
-    "build": "NODE_ENV=production npx prisma db push --skip-generate --accept-data-loss && npx prisma generate && next build",
+    "build": "prisma generate && next build",
     "start": "next start",
     "migrate": "knex migrate:latest --env production",
     "generate-cron-secret": "node scripts/generate-cron-secret.js",

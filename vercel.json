@@ -1,20 +1,8 @@
 {
-  "version": 2,
-  "buildCommand": "./vercel-build.sh",
-  "outputDirectory": ".next",
   "crons": [
     {
       "path": "/api/cron/email-sync",
       "schedule": "0 0 * * *"
     }
-  ],
-  "github": {
-    "silent": true
-  },
-  "functions": {
-    "pages/api/**/*.ts": {
-      "memory": 1024,
-      "maxDuration": 60
-    }
-  }
+  ]
 }

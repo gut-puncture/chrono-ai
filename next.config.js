@@ -3,15 +3,11 @@ module.exports = {
   reactStrictMode: true,
   swcMinify: true,
   typescript: {
-    // !! WARN !!
-    // Dangerously allow production builds to successfully complete even if
-    // your project has type errors.
-    // !! WARN !!
+    // Allow production builds to complete even with type errors
     ignoreBuildErrors: true,
   },
   eslint: {
-    // Warning: This allows production builds to successfully complete even if
-    // your project has ESLint errors.
+    // Allow production builds to complete even with ESLint errors
     ignoreDuringBuilds: true,
   },
   experimental: {
