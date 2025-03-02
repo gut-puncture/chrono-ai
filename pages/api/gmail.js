@@ -1,6 +1,6 @@
 // pages/api/gmail.js
 import { getSession } from "next-auth/react";
-import { syncEmails } from '@/lib/emailWorker';
+import { syncEmails } from '../../lib/emailWorker';
 
 export default async function handler(req, res) {
   const session = await getSession({ req });

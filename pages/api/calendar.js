@@ -1,7 +1,7 @@
 // pages/api/calendar.js
 import { getSession } from "next-auth/react";
 import axios from "axios";
-import prisma from '@/lib/prisma';
+import prisma from '../../lib/prisma';
 
 export default async function handler(req, res) {
   const session = await getSession({ req });
