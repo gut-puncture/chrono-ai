@@ -477,8 +477,8 @@ export default function Chat() {
       }
     };
 
-    // Poll every 30 seconds
-    pollInterval = setInterval(pollForUpdates, 30000);
+    // Poll every 60 seconds to reduce server load but still maintain reasonable sync
+    pollInterval = setInterval(pollForUpdates, 90000);
 
     // Initial poll
     pollForUpdates();
@@ -488,7 +488,7 @@ export default function Chat() {
         clearInterval(pollInterval);
       }
     };
-  }, [status]); // Only re-run if authentication status changes
+  }, [status, lastUpdateTimestamp]); // Add lastUpdateTimestamp to dependency array for proper reactivity
 
   // Handle loading or unauthenticated states
   if (status === "loading") {
