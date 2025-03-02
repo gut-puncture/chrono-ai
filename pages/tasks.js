@@ -42,7 +42,7 @@ export default function TaskTable() {
     const pollInterval = setInterval(() => {
       console.log("Manual task poll - refreshing data");
       mutate();
-    }, 60000); // Poll every minute
+    }, 300000); // Poll every 5 minutes instead of every minute
     
     return () => clearInterval(pollInterval);
   }, [session, mutate]);

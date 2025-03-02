@@ -459,7 +459,7 @@ export default function Chat() {
     };
 
     // Poll every 60 seconds to reduce server load but still maintain reasonable sync
-    pollInterval = setInterval(pollForUpdates, 90000);
+    pollInterval = setInterval(pollForUpdates, 300000);
 
     // Initial poll
     pollForUpdates();
@@ -469,7 +469,7 @@ export default function Chat() {
         clearInterval(pollInterval);
       }
     };
-  }, [status, lastUpdateTimestamp]); // Add lastUpdateTimestamp to dependency array for proper reactivity
+  }, [status]); // Remove lastUpdateTimestamp from dependency array to prevent infinite loop
 
   // Add this useEffect for email polling (separate from the task polling)
   useEffect(() => {

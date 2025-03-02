@@ -1,16 +1,10 @@
-import React, { useEffect } from 'react';
+import React from 'react';
 
 const TaskList = () => {
-  useEffect(() => {
-    const pollInterval = setInterval(() => {
-      fetchTasks();
-    }, 30000); // Poll every 30 seconds
-
-    return () => clearInterval(pollInterval);
-  }, []);
-
   return (
-    // Rest of the component code
+    <div>
+      {/* Task list content */}
+    </div>
   );
 };
 
