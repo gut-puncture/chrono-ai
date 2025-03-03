@@ -1,30 +1,30 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
 datasource db {
   provider = "postgresql"
   url      = env("DATABASE_URL")
 }
 
-generator client {
-  provider = "prisma-client-js"
-}
-
 model User {
   id             Int             @id @default(autoincrement())
   name           String?
-  email          String?   @unique
+  email          String?         @unique
   emailVerified  DateTime?
   image          String?
   accounts       Account[]
-  sessions       Session[]
+  calendarEvents CalendarEvent[]
   chatMessages   ChatMessage[]
-  tasks          Task[]
+  collatedDocs   CollatedDoc[]
   emails         Email[]
   emailThreads   EmailThread[]
-  calendarEvents CalendarEvent[]
-  collatedDocs   CollatedDoc[]
+  sessions       Session[]
+  tasks          Task[]
 }
 
 model Account {
-  id                Int      @id @default(autoincrement())
+  id                Int     @id @default(autoincrement())
   userId            Int
   type              String
   provider          String
@@ -36,7 +36,7 @@ model Account {
   scope             String?
   id_token          String?
   session_state     String?
-  user              User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user              User    @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([provider, providerAccountId])
 }
@@ -60,33 +60,27 @@ model VerificationToken {
 model ChatMessage {
   id          Int      @id @default(autoincrement())
   userId      Int
-  role        String    // store "user" or "llm"
+  role        String
   messageText String
   llmResponse String?
-  createdAt   DateTime  @default(now())
+  createdAt   DateTime @default(now())
   scopeId     String?
   tags        Json?
   user        User     @relation(fields: [userId], references: [id])
 }
 
-enum TaskStatus {
-  YET_TO_BEGIN
-  IN_PROGRESS
-  DONE
-}
-
 model Task {
-  id              Int       @id @default(autoincrement())
+  id              Int        @id @default(autoincrement())
   userId          Int
   title           String
   description     String?
   dueDate         DateTime?
   status          TaskStatus
   priority        Int
-  createdAt       DateTime  @default(now())
-  updatedAt       DateTime  @updatedAt
-  sourceMessageId Int?      // optional reference to a ChatMessage ID
-  user            User      @relation(fields: [userId], references: [id])
+  createdAt       DateTime   @default(now())
+  updatedAt       DateTime   @updatedAt
+  sourceMessageId Int?
+  user            User       @relation(fields: [userId], references: [id])
 }
 
 model EmailThread {
@@ -102,18 +96,18 @@ model EmailThread {
 }
 
 model Email {
-  id          String      @id @default(cuid())
-  messageId   String      @unique
-  userId      Int
-  threadId    String
-  snippet     String?
-  subject     String?
-  from        String?
-  to          String?
-  date        DateTime
-  labels      String[]
-  thread      EmailThread @relation(fields: [threadId], references: [threadId])
-  user        User        @relation(fields: [userId], references: [id])
+  id        String      @id @default(cuid())
+  messageId String      @unique
+  userId    Int
+  threadId  String
+  snippet   String?
+  subject   String?
+  from      String?
+  to        String?
+  date      DateTime
+  labels    String[]
+  thread    EmailThread @relation(fields: [threadId], references: [threadId])
+  user      User        @relation(fields: [userId], references: [id])
 
   @@index([userId])
   @@index([threadId])
@@ -122,7 +116,7 @@ model Email {
 model CalendarEvent {
   id               String   @id @default(cuid())
   eventId          String   @unique
-  userId           Int      // changed from String to Int
+  userId           Int
   title            String?
   description      String?
   location         String?
@@ -131,7 +125,7 @@ model CalendarEvent {
   isRecurring      Boolean  @default(false)
   recurringEventId String?
   meetLink         String?
-  attendees        String?  // JSON string of attendees
+  attendees        String?
   status           String?
   createdAt        DateTime
   updatedAt        DateTime
@@ -140,36 +134,42 @@ model CalendarEvent {
   @@index([userId])
 }
 
+model CollatedDoc {
+  id             Int      @id @default(autoincrement())
+  userId         Int
+  docType        DocType
+  title          String
+  content        String
+  generatedForId Int?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+  user           User     @relation(fields: [userId], references: [id])
+}
+
+model Embedding {
+  id              Int         @id @default(autoincrement())
+  contentType     ContentType
+  contentId       String
+  embeddingVector Json
+  createdAt       DateTime    @default(now())
+
+  @@index([contentType, contentId])
+}
+
+enum TaskStatus {
+  YET_TO_BEGIN
+  IN_PROGRESS
+  DONE
+}
+
 enum DocType {
   MEETING
   BY_PRODUCT
   BY_PROJECT
 }
 
-model CollatedDoc {
-  id             Int      @id @default(autoincrement())
-  userId         Int
-  docType        DocType
-  title          String
-  content        String   // store the full generated document text or structured JSON
-  generatedForId Int?     // can reference a meeting or project ID
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
-  user           User     @relation(fields: [userId], references: [id])
-}
-
 enum ContentType {
   CHAT_MESSAGE
   EMAIL
   CALENDAR_EVENT
-}
-
-model Embedding {
-  id              Int         @id @default(autoincrement())
-  contentType     ContentType
-  contentId       String      // Using String to handle both Int and String IDs
-  embeddingVector Json
-  createdAt       DateTime    @default(now())
-
-  @@index([contentType, contentId])
 }
